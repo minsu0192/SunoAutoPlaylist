@@ -34,7 +34,7 @@ def main():
                 "path": c.path,
                 "expires": c.expires,
                 "httpOnly": False,
-                "secure": c.secure,
+                "secure": bool(c.secure),
                 "sameSite": "Lax",
             })
 
