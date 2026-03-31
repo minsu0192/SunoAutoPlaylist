@@ -1,0 +1,10 @@
+client_secrets.json
+token.json
+suno_session.json
+downloads/
+output/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+assets/*_cover.jpg
