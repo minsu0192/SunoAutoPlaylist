@@ -7,8 +7,12 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // ── 공통 fetch 래퍼 ──────────────────────────────────────────
 async function apiFetch(path, options = {}) {
+  const apiKey = localStorage.getItem('anthropic_api_key') || '';
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'X-Anthropic-Api-Key': apiKey } : {}),
+    },
     ...options,
   });
   const data = await res.json();

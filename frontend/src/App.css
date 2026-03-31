@@ -659,3 +659,58 @@ body {
   font-family: monospace;
   font-size: 12px;
 }
+
+/* ── API 키 설정 버튼 ──────────────────────────────────────── */
+.api-key-btn {
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.api-key-btn:hover { border-color: #00e5ff; color: #00e5ff; }
+
+/* ── API 키 모달 ───────────────────────────────────────────── */
+.api-key-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.api-key-modal {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 16px;
+  padding: 32px;
+  width: 100%; max-width: 420px;
+}
+.api-key-title { color: #fff; font-size: 18px; margin: 0 0 8px; }
+.api-key-desc { color: #aaa; font-size: 13px; margin: 0 0 16px; line-height: 1.6; }
+.api-key-input {
+  width: 100%; padding: 10px 14px;
+  background: #0d0d0d; border: 1px solid #333; border-radius: 8px;
+  color: #fff; font-size: 14px; box-sizing: border-box;
+  margin-bottom: 12px;
+}
+.api-key-input:focus { outline: none; border-color: #00e5ff; }
+.api-key-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+.api-key-save-btn {
+  flex: 1; padding: 10px;
+  background: #00e5ff; color: #000; border: none;
+  border-radius: 8px; font-weight: 700; cursor: pointer;
+}
+.api-key-delete-btn {
+  padding: 10px 16px;
+  background: transparent; color: #ff4444;
+  border: 1px solid #ff4444; border-radius: 8px; cursor: pointer;
+}
+.api-key-cancel-btn {
+  padding: 10px 16px;
+  background: transparent; color: #aaa;
+  border: 1px solid #444; border-radius: 8px; cursor: pointer;
+}
+.api-key-help { color: #666; font-size: 12px; margin: 0; }
