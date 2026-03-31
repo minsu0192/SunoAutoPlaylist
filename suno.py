@@ -9,9 +9,10 @@ Playwright를 사용해 수노 웹사이트를 자동 조작합니다.
 import asyncio
 import json
 import re
+import shutil
+import tempfile
 import time
 from pathlib import Path
-from typing import Optional
 
 from playwright.async_api import async_playwright, Page, BrowserContext
 
@@ -26,6 +27,9 @@ except ImportError:
 SUNO_URL     = "https://suno.com"
 SESSION_FILE = Path(__file__).parent / "suno_session.json"
 
+# macOS 크롬 프로필 경로
+CHROME_USER_DATA = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
+
 
 class SunoAutomation:
     def __init__(self, download_dir: Path):
@@ -34,11 +38,7 @@ class SunoAutomation:
 
     async def generate(self, title: str, prompt: str, style: str = "", count: int = 2) -> dict:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=False,
-                args=["--no-sandbox"],
-            )
-            context = await self._load_session(browser)
+            context, temp_dir = await self._create_context(p)
             page = await context.new_page()
 
             if STEALTH_AVAILABLE:
@@ -46,12 +46,61 @@ class SunoAutomation:
 
             try:
                 result = await self._run_generation(page, title, prompt, style, count)
-                await self._save_session(context)
+                # 크롬 프로필 미사용 시에만 세션 저장
+                if temp_dir is None:
+                    await self._save_session(context)
                 return result
             except Exception as e:
                 return {"success": False, "error": str(e)}
             finally:
-                await browser.close()
+                await context.browser.close()
+                if temp_dir:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+    async def _create_context(self, p):
+        """
+        우선순위:
+        1. 크롬 프로필 복사본 사용 (로그인 상태 자동 유지)
+        2. 저장된 세션 파일 사용
+        3. 새 컨텍스트 (수동 로그인 필요)
+        """
+        if CHROME_USER_DATA.exists():
+            print("[브라우저] 크롬 프로필 복사 중... (로그인 상태 가져오기)")
+            temp_dir = tempfile.mkdtemp(prefix="suno_chrome_")
+            chrome_copy = Path(temp_dir) / "chrome_profile"
+            # Default 프로필만 복사 (전체 복사는 너무 큼)
+            src = CHROME_USER_DATA / "Default"
+            shutil.copytree(str(src), str(chrome_copy / "Default"), dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("Cache", "Code Cache", "GPUCache",
+                                                          "ShaderCache", "DawnCache", "Crashpad"))
+            # Local State 파일도 필요
+            local_state = CHROME_USER_DATA / "Local State"
+            if local_state.exists():
+                shutil.copy2(str(local_state), str(chrome_copy / "Local State"))
+
+            try:
+                context = await p.chromium.launch_persistent_context(
+                    str(chrome_copy),
+                    channel="chrome",
+                    headless=False,
+                    args=["--no-sandbox", "--profile-directory=Default"],
+                )
+                print("[브라우저] 크롬 프로필 로드 완료")
+                return context, temp_dir
+            except Exception as e:
+                print(f"[경고] 크롬 프로필 로드 실패: {e} → 세션 파일로 대체")
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # 세션 파일 방식 fallback
+        browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
+        if SESSION_FILE.exists():
+            print("[브라우저] 저장된 세션으로 시작")
+            state = json.loads(SESSION_FILE.read_text())
+            context = await browser.new_context(storage_state=state)
+        else:
+            print("[브라우저] 새 세션으로 시작 (로그인 필요)")
+            context = await browser.new_context()
+        return context, None
 
     async def _run_generation(self, page: Page, title: str, prompt: str, style: str, count: int) -> dict:
 
@@ -59,8 +108,7 @@ class SunoAutomation:
         await asyncio.sleep(2)
 
         if not await self._is_logged_in(page):
-            print("[수노] 로그인이 필요합니다. 브라우저에서 직접 로그인 후 Enter를 누르세요.")
-            input("로그인 완료 후 Enter ▶ ")
+            return {"success": False, "error": "수노 로그인이 필요합니다. 크롬에서 suno.com에 먼저 로그인해 주세요."}
 
         await page.click("a[href='/create'], button:has-text('Create')")
         await asyncio.sleep(1)
@@ -129,12 +177,6 @@ class SunoAutomation:
             return True
         except Exception:
             return False
-
-    async def _load_session(self, browser):
-        if SESSION_FILE.exists():
-            state = json.loads(SESSION_FILE.read_text())
-            return await browser.new_context(storage_state=state)
-        return await browser.new_context()
 
     async def _save_session(self, context: BrowserContext):
         state = await context.storage_state()
