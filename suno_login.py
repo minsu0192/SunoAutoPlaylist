@@ -23,14 +23,20 @@ async def main():
     print()
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=False,
-            args=["--no-sandbox"],
-        )
+        try:
+            browser = await p.chromium.launch(
+                headless=False,
+                channel="chrome",
+                args=["--no-sandbox"],
+            )
+            print("[브라우저] Chrome으로 실행 중...")
+        except Exception:
+            browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
+            print("[브라우저] Chromium으로 실행 중...")
         context = await browser.new_context()
         page = await context.new_page()
 
-        await page.goto("https://suno.com", wait_until="load", timeout=60000)
+        await page.goto("https://suno.com", wait_until="domcontentloaded", timeout=60000)
 
         print("▶ 브라우저에서 수노 로그인을 완료하세요.")
         print("  (Google 또는 Discord 계정으로 로그인)")

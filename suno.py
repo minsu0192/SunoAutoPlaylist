@@ -48,9 +48,20 @@ class SunoAutomation:
                 await context.close()
 
     async def _create_context(self, p):
-        browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
+        # 진짜 Chrome 사용 (Cloudflare 우회) → 프로필 없이 실행
+        try:
+            browser = await p.chromium.launch(
+                headless=False,
+                channel="chrome",
+                args=["--no-sandbox"],
+            )
+            print("[브라우저] Chrome으로 시작")
+        except Exception:
+            browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
+            print("[브라우저] Chromium으로 시작 (Chrome 없음)")
+
         if SESSION_FILE.exists():
-            print("[브라우저] 저장된 세션으로 시작")
+            print("[브라우저] 저장된 세션으로 로그인")
             state = json.loads(SESSION_FILE.read_text())
             return await browser.new_context(storage_state=state)
         print("[브라우저] 세션 없음 → 새 브라우저로 시작 (로그인 필요)")
@@ -58,7 +69,7 @@ class SunoAutomation:
 
     async def _run_generation(self, page: Page, title: str, prompt: str, style: str, count: int) -> dict:
 
-        await page.goto(SUNO_URL, wait_until="load", timeout=60000)
+        await page.goto(SUNO_URL, wait_until="domcontentloaded", timeout=60000)
         await asyncio.sleep(2)
 
         if not await self._is_logged_in(page):
