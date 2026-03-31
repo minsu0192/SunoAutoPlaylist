@@ -9,8 +9,6 @@ Playwright를 사용해 수노 웹사이트를 자동 조작합니다.
 import asyncio
 import json
 import re
-import shutil
-import tempfile
 import time
 from pathlib import Path
 
@@ -38,7 +36,7 @@ class SunoAutomation:
 
     async def generate(self, title: str, prompt: str, style: str = "", count: int = 2) -> dict:
         async with async_playwright() as p:
-            context, temp_dir = await self._create_context(p)
+            context = await self._create_context(p)
             page = await context.new_page()
 
             if STEALTH_AVAILABLE:
@@ -46,61 +44,43 @@ class SunoAutomation:
 
             try:
                 result = await self._run_generation(page, title, prompt, style, count)
-                # 크롬 프로필 미사용 시에만 세션 저장
-                if temp_dir is None:
-                    await self._save_session(context)
                 return result
             except Exception as e:
                 return {"success": False, "error": str(e)}
             finally:
-                await context.browser.close()
-                if temp_dir:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                await context.close()
 
     async def _create_context(self, p):
         """
         우선순위:
-        1. 크롬 프로필 복사본 사용 (로그인 상태 자동 유지)
+        1. 실제 크롬 프로필 직접 사용 (크롬이 닫혀 있어야 함)
         2. 저장된 세션 파일 사용
-        3. 새 컨텍스트 (수동 로그인 필요)
+        3. 새 컨텍스트
         """
         if CHROME_USER_DATA.exists():
-            print("[브라우저] 크롬 프로필 복사 중... (로그인 상태 가져오기)")
-            temp_dir = tempfile.mkdtemp(prefix="suno_chrome_")
-            chrome_copy = Path(temp_dir) / "chrome_profile"
-            # Default 프로필만 복사 (전체 복사는 너무 큼)
-            src = CHROME_USER_DATA / "Default"
-            shutil.copytree(str(src), str(chrome_copy / "Default"), dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("Cache", "Code Cache", "GPUCache",
-                                                          "ShaderCache", "DawnCache", "Crashpad"))
-            # Local State 파일도 필요
-            local_state = CHROME_USER_DATA / "Local State"
-            if local_state.exists():
-                shutil.copy2(str(local_state), str(chrome_copy / "Local State"))
-
             try:
+                print("[브라우저] 크롬 프로필로 시작 중...")
                 context = await p.chromium.launch_persistent_context(
-                    str(chrome_copy),
+                    str(CHROME_USER_DATA),
                     channel="chrome",
                     headless=False,
                     args=["--no-sandbox", "--profile-directory=Default"],
                 )
                 print("[브라우저] 크롬 프로필 로드 완료")
-                return context, temp_dir
+                return context
             except Exception as e:
-                print(f"[경고] 크롬 프로필 로드 실패: {e} → 세션 파일로 대체")
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                print(f"[경고] 크롬 프로필 로드 실패: {e}")
+                print("[경고] 크롬이 열려 있으면 닫고 다시 시도하세요.")
 
         # 세션 파일 방식 fallback
         browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
         if SESSION_FILE.exists():
             print("[브라우저] 저장된 세션으로 시작")
             state = json.loads(SESSION_FILE.read_text())
-            context = await browser.new_context(storage_state=state)
-        else:
-            print("[브라우저] 새 세션으로 시작 (로그인 필요)")
-            context = await browser.new_context()
-        return context, None
+            return await browser.new_context(storage_state=state)
+
+        print("[브라우저] 새 세션으로 시작")
+        return await browser.new_context()
 
     async def _run_generation(self, page: Page, title: str, prompt: str, style: str, count: int) -> dict:
 
