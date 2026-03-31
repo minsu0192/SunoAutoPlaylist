@@ -55,7 +55,7 @@ class SunoAutomation:
 
     async def _run_generation(self, page: Page, title: str, prompt: str, style: str, count: int) -> dict:
 
-        await page.goto(SUNO_URL, wait_until="networkidle")
+        await page.goto(SUNO_URL, wait_until="load", timeout=60000)
         await asyncio.sleep(2)
 
         if not await self._is_logged_in(page):
