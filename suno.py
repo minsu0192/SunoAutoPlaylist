@@ -25,9 +25,6 @@ except ImportError:
 SUNO_URL     = "https://suno.com"
 SESSION_FILE = Path(__file__).parent / "suno_session.json"
 
-# macOS 크롬 프로필 경로
-CHROME_USER_DATA = Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
-
 
 class SunoAutomation:
     def __init__(self, download_dir: Path):
@@ -51,35 +48,12 @@ class SunoAutomation:
                 await context.close()
 
     async def _create_context(self, p):
-        """
-        우선순위:
-        1. 실제 크롬 프로필 직접 사용 (크롬이 닫혀 있어야 함)
-        2. 저장된 세션 파일 사용
-        3. 새 컨텍스트
-        """
-        if CHROME_USER_DATA.exists():
-            try:
-                print("[브라우저] 크롬 프로필로 시작 중...")
-                context = await p.chromium.launch_persistent_context(
-                    str(CHROME_USER_DATA),
-                    channel="chrome",
-                    headless=False,
-                    args=["--no-sandbox", "--profile-directory=Default"],
-                )
-                print("[브라우저] 크롬 프로필 로드 완료")
-                return context
-            except Exception as e:
-                print(f"[경고] 크롬 프로필 로드 실패: {e}")
-                print("[경고] 크롬이 열려 있으면 닫고 다시 시도하세요.")
-
-        # 세션 파일 방식 fallback
         browser = await p.chromium.launch(headless=False, args=["--no-sandbox"])
         if SESSION_FILE.exists():
             print("[브라우저] 저장된 세션으로 시작")
             state = json.loads(SESSION_FILE.read_text())
             return await browser.new_context(storage_state=state)
-
-        print("[브라우저] 새 세션으로 시작")
+        print("[브라우저] 세션 없음 → 새 브라우저로 시작 (로그인 필요)")
         return await browser.new_context()
 
     async def _run_generation(self, page: Page, title: str, prompt: str, style: str, count: int) -> dict:
@@ -88,7 +62,7 @@ class SunoAutomation:
         await asyncio.sleep(2)
 
         if not await self._is_logged_in(page):
-            return {"success": False, "error": "수노 로그인이 필요합니다. 크롬에서 suno.com에 먼저 로그인해 주세요."}
+            return {"success": False, "error": "수노 로그인이 필요합니다. 터미널에서 python3.11 suno_login.py 를 먼저 실행해 로그인해주세요."}
 
         await page.click("a[href='/create'], button:has-text('Create')")
         await asyncio.sleep(1)
