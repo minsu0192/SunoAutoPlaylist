@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CopyButton from './CopyButton';
+import { generateSong, pollJob } from '../api';
 
 // ─── 타임스탬프 계산 유틸 ───────────────────────────────────
 function parseTotalSeconds(duration) {
@@ -62,6 +63,15 @@ function ResultPanel({ mood }) {
     { id: 3, title: 'Track 3', duration: '4:00' },
   ]);
 
+  // ── 실행 상태 ──
+  const [jobState, setJobState]     = useState(null);
+  const [isRunning, setIsRunning]   = useState(false);
+  const [cancelPoll, setCancelPoll] = useState(null);
+
+  useEffect(() => {
+    return () => { if (cancelPoll) cancelPoll(); };
+  }, [cancelPoll]);
+
   const ytTitle = `${mood.emoji} ${mood.korName} | ${mood.engName} | Seoul Diary Playlist`;
   const ytDescription = buildYouTubeDescription(mood, tracks);
   const ytTags = mood.tags.join(' ');
@@ -81,6 +91,28 @@ function ResultPanel({ mood }) {
     setTracks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
     );
+  };
+
+  const handleGenerate = async () => {
+    if (isRunning) return;
+    setIsRunning(true);
+    setJobState(null);
+    try {
+      const { job_id } = await generateSong({
+        title: mood.korName,
+        prompt: mood.sunoPrompt,
+        style: mood.engName,
+        count: 2,
+      });
+      const p = pollJob(job_id, { onUpdate: setJobState });
+      setCancelPoll(() => p.cancel);
+      await p;
+    } catch (err) {
+      setJobState((prev) => ({ ...prev, status: 'error', error: err.message }));
+    } finally {
+      setIsRunning(false);
+      setCancelPoll(null);
+    }
   };
 
   return (
@@ -152,6 +184,44 @@ function ResultPanel({ mood }) {
             );
           })}
         </div>
+      </div>
+
+      {/* ── 실행 패널 ── */}
+      <div className="execution-panel">
+        <button
+          className={`execute-btn${isRunning ? ' execute-btn--running' : ''}`}
+          onClick={handleGenerate}
+          disabled={isRunning}
+        >
+          {isRunning ? '⏳ 생성 중...' : '▶ 실행 (Suno 음악 생성)'}
+        </button>
+
+        {isRunning && cancelPoll && (
+          <button
+            className="cancel-btn"
+            onClick={() => { cancelPoll(); setIsRunning(false); }}
+          >
+            취소
+          </button>
+        )}
+
+        {jobState && (
+          <div className={`job-status job-status--${jobState.status}`}>
+            <span className="job-status-label">
+              {jobState.status === 'pending' && '⏳ 대기 중...'}
+              {jobState.status === 'running' && '🎵 Suno에서 생성 중... (2~3분 소요)'}
+              {jobState.status === 'done'    && '✅ 생성 완료!'}
+              {jobState.status === 'error'   && `❌ 오류: ${jobState.error}`}
+            </span>
+            {jobState.status === 'done' && jobState.result?.downloaded_files && (
+              <ul className="job-result-list">
+                {jobState.result.downloaded_files.map((f) => (
+                  <li key={f}>🎵 {f}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {/* YouTube 설명 (트랙리스트 포함) */}

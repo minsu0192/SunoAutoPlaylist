@@ -395,3 +395,102 @@ body {
 .remove-track-btn:hover {
   color: #f87171;
 }
+
+/* ──────────────────────────────────────────────────────────
+   실행 패널
+   ────────────────────────────────────────────────────────── */
+.execution-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.execute-btn {
+  padding: 12px 24px;
+  background: var(--accent, var(--purple));
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition), transform var(--transition);
+  align-self: flex-start;
+}
+
+.execute-btn:hover:not(:disabled) {
+  opacity: 0.85;
+  transform: translateY(-1px);
+}
+
+.execute-btn--running,
+.execute-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.cancel-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  width: fit-content;
+  transition: border-color var(--transition);
+}
+
+.cancel-btn:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.job-status {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.job-status--pending,
+.job-status--running {
+  background: #1c1a07;
+  border: 1px solid #92400e44;
+  color: #fcd34d;
+}
+
+.job-status--done {
+  background: #071c10;
+  border: 1px solid #06503344;
+  color: #6ee7b7;
+}
+
+.job-status--error {
+  background: #1c0707;
+  border: 1px solid #99191944;
+  color: #fca5a5;
+}
+
+.job-status-label {
+  display: block;
+  font-weight: 600;
+}
+
+.job-result-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  list-style: none;
+}
+
+.job-result-list li {
+  padding: 2px 0;
+  font-family: monospace;
+  font-size: 12px;
+}

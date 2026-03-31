@@ -117,9 +117,8 @@ class SunoAutomation:
         raise TimeoutError(f"{timeout}초 안에 곡 생성이 완료되지 않았습니다.")
 
     async def _download_mp3(self, page: Page, audio_url: str, filepath: Path):
-        async with page.context.request as req:
-            response = await req.get(audio_url)
-            filepath.write_bytes(await response.body())
+        response = await page.context.request.get(audio_url)
+        filepath.write_bytes(await response.body())
 
     async def _is_logged_in(self, page: Page) -> bool:
         try:
