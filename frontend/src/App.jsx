@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MOODS } from './data/moods';
 import MoodCard from './components/MoodCard';
 import ResultPanel from './components/ResultPanel';
+import AuthWrapper from './components/AuthWrapper';
 import './App.css';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
   };
 
   return (
+    <AuthWrapper>
     <div className="app">
       <header className="app-header">
         <div className="app-header-inner">
@@ -45,6 +47,7 @@ function App() {
         <p>Seoul Diary Playlist · AI-powered by Suno & Midjourney</p>
       </footer>
     </div>
+    </AuthWrapper>
   );
 }
 
