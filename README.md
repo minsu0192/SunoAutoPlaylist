@@ -1,514 +1,220 @@
-# SunoAutoPlaylist — 맥북 실행 가이드 (A to Z)
+# 수노 자동화 (SunoAutoPlaylist)
 
-수노(Suno)에서 AI 음악을 자동 생성·다운로드하고, YouTube에 업로드하는 자동화 도구입니다.
-
----
-
-## 목차
-
-1. [시스템 준비물](#1-시스템-준비물)
-2. [저장소 클론](#2-저장소-클론)
-3. [Python 환경 설정](#3-python-환경-설정)
-4. [Anthropic API 키 설정](#4-anthropic-api-키-설정)
-5. [수노 로그인 확인](#5-수노-로그인-확인)
-6. [첫 UI 학습 (suno_learn.py)](#6-첫-ui-학습-suno_learnpy)
-7. [자동 실행 (suno_runner.py)](#7-자동-실행-suno_runnerpy)
-7-1. [메뉴바 앱으로 실행 (터미널 불필요)](#7-1-메뉴바-앱으로-실행-터미널-불필요)
-8. [웹 UI 실행 (선택)](#8-웹-ui-실행-선택)
-9. [맥OS 권한 설정](#9-macos-권한-설정)
-10. [폴더 구조](#10-폴더-구조)
-11. [자주 묻는 문제](#11-자주-묻는-문제)
+이미지 + 키워드 하나로 **Suno AI 음악 생성 → MP4 영상 제작 → YouTube 업로드**까지 완전 자동화하는 개인 맥북 전용 도구.
 
 ---
 
-## 1. 시스템 준비물
+## 전체 워크플로
 
-아래 항목을 순서대로 설치해주세요.
+```
+이미지 파일을 ~/SunoProjects/input/ 에 드롭
+         ↓
+Claude Haiku: 키워드+이미지 → 가사/스타일/설명 자동 생성
+         ↓
+pyautogui: Chrome에서 Suno 자동 조작 → MP3 다운로드
+         ↓
+FFmpeg: MP3 + 커버이미지 → MP4
+         ↓
+YouTube API: 업로드 + 플레이리스트 추가
+         ↓
+macOS 알림으로 완료 통보
+```
 
-### Python 3.11
+---
+
+## 프로젝트 폴더 구조
+
+```
+~/SunoProjects/
+├── input/                    ← 이미지를 여기에 드롭 (파일명 = 키워드)
+│   └── 01_sunset_calm.jpg
+├── queue.json                ← 자동 생성 (프로젝트 상태 추적)
+└── projects/                 ← 처리된 프로젝트
+    └── 2026-04-01_sunset_calm/
+        ├── cover.jpg         ← 원본 이미지
+        ├── content.json      ← 가사/스타일/설명 (Claude 생성)
+        ├── song.mp3          ← 선택된 곡
+        ├── song.mp4          ← 완성 영상
+        └── status.json       ← 처리 상태
+
+~/.suno_config.json           ← 앱 설정
+~/.suno_auto.log              ← 실행 로그
+```
+
+**이미지 파일명 규칙:**
+- 파일명이 자동으로 키워드가 됨
+- `01_sunset_calm.jpg` → 키워드: `sunset calm`
+- `도시의 밤.jpg` → 키워드: `도시의 밤`
+- 앞쪽 숫자/구분자는 자동 제거됨
+
+---
+
+## A-to-Z 맥북 설치 가이드
+
+### 1단계: 필수 프로그램 설치
 
 ```bash
-# Homebrew로 설치 (Homebrew가 없으면 먼저 설치)
+# Homebrew (없으면)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-brew install python@3.11
-```
+# Python 3.11 + FFmpeg
+brew install python@3.11 ffmpeg
 
-설치 확인:
-```bash
+# 확인
 python3.11 --version
-# Python 3.11.x
-```
-
-### Google Chrome
-
-- 이미 설치되어 있으면 건너뜁니다.
-- [chrome.google.com](https://www.google.com/chrome/) 에서 다운로드
-
-### FFmpeg (음악→영상 변환용)
-
-```bash
-brew install ffmpeg
-```
-
-설치 확인:
-```bash
 ffmpeg -version
 ```
 
-### Node.js 18+ (웹 UI 사용 시에만 필요)
+### 2단계: 프로젝트 다운로드
 
 ```bash
-brew install node
-```
-
----
-
-## 2. 저장소 클론
-
-```bash
-# 원하는 위치로 이동 (예: 바탕화면)
-cd ~/Desktop
-
-# 클론
+cd ~
 git clone https://github.com/minsu0192/SunoAutoPlaylist.git
 cd SunoAutoPlaylist
 
-# 최신 브랜치로 전환
-git checkout claude/suno-playlist-maker-jixsq
-git pull origin claude/suno-playlist-maker-jixsq
-```
-
----
-
-## 3. Python 환경 설정
-
-```bash
-# 프로젝트 폴더 안에서 실행
-cd ~/Desktop/SunoAutoPlaylist
-
-# 가상환경 생성
+# 가상환경 생성 및 패키지 설치
 python3.11 -m venv .venv
-
-# 가상환경 활성화 (터미널을 새로 열 때마다 실행 필요)
 source .venv/bin/activate
-
-# 패키지 설치
 pip install -r requirements.txt
 ```
 
-> ⚠️ 이후 모든 `python` 명령어는 가상환경이 활성화된 상태에서 실행하세요.
-> 터미널 프롬프트 앞에 `(.venv)` 가 붙어 있으면 활성화된 상태입니다.
+### 3단계: Anthropic API 키 준비
 
----
+1. [console.anthropic.com](https://console.anthropic.com) 에서 API 키 발급
+2. 앱 실행 후 메뉴 → **⚙️ 설정...** 에서 입력
 
-## 4. Anthropic API 키 설정
+### 4단계: Chrome에서 Suno 로그인
 
-Anthropic API 키가 있어야 Claude Haiku로 UI 좌표 탐지 및 다운로드 자동화가 동작합니다.
+1. Chrome 브라우저에서 **[suno.com](https://suno.com)** 접속
+2. 구글 계정으로 로그인
+3. **이후로는 로그인 유지됨** — 앱이 이 Chrome을 제어함
 
-### .env 파일 생성
+> ⚠️ 로그인은 한 번만 수동으로 하면 됩니다. pyautogui는 실제 Chrome을 조작하므로 Cloudflare 차단 없이 작동합니다.
 
-프로젝트 루트에 `.env` 파일을 만들어 API 키를 저장합니다.
-
-```bash
-# 프로젝트 폴더 안에서 실행
-echo 'ANTHROPIC_API_KEY=여기에_실제_키를_입력' > .env
-```
-
-또는 텍스트 편집기로 `.env` 파일을 직접 생성:
-
-```
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxx
-```
-
-> ✅ `.env` 파일은 `.gitignore`에 등록되어 있어 GitHub에 올라가지 않습니다.
-
-### 환경변수 로드
-
-터미널을 열 때마다 아래 명령어로 API 키를 불러옵니다:
-
-```bash
-export $(cat .env | xargs)
-```
-
-매번 입력하기 번거로우면 `~/.zshrc`에 추가:
-
-```bash
-echo 'export ANTHROPIC_API_KEY=여기에_실제_키를_입력' >> ~/.zshrc
-source ~/.zshrc
-```
-
----
-
-## 5. 수노 로그인 확인
-
-> ✅ **별도 로그인 자동화가 없습니다** — 이게 이 방식의 핵심입니다.
-
-이전에 문제가 됐던 "자동 로그인" (Playwright가 Chrome을 열어서 로그인 시도)은
-**완전히 제거됐습니다.** Cloudflare 차단, Google OAuth 거부, SMS 인증 미도착 등의
-문제가 모두 여기서 비롯됐었습니다.
-
-### 현재 방식 (pyautogui)
-
-```
-사용자가 직접 Chrome을 열고 → 직접 로그인 → suno.com/create 이동
-    ↓
-suno_runner.py 실행 → "준비 완료 후 Enter" 대기
-    ↓
-Enter 누르면 pyautogui가 마우스만 대신 움직임
-```
-
-Suno 입장에서는 **사람이 마우스를 움직이는 것과 구분할 수 없습니다.**
-브라우저를 건드리지 않으므로 차단 없음.
-
-### 로그인 방법
-
-1. **평소처럼 Chrome을 엽니다.**
-2. **[suno.com](https://suno.com) 에 직접 로그인합니다.**
-   - 전화번호, Google, Discord 등 어떤 방법이든 가능
-   - 한 번 로그인하면 Chrome 세션이 유지되므로 매번 할 필요 없음
-3. **[suno.com/create](https://suno.com/create) 로 이동합니다.**
-4. `suno_runner.py` 를 실행하면 Enter를 기다립니다.
-
-> Chrome이 이미 Suno에 로그인된 상태라면 2~3번은 건너뛰어도 됩니다.
-
----
-
-## 6. 첫 UI 학습 (suno_learn.py)
-
-수노의 버튼·입력란 위치를 Claude Vision API로 자동 학습합니다.
-**처음 한 번만 실행하면 됩니다.** 이후에는 UI 변경이 감지될 때만 재실행합니다.
-
-### 사전 준비
-
-1. Chrome에서 **[suno.com/create](https://suno.com/create)** 를 엽니다.
-2. 상단 탭에서 **Advanced** 를 클릭합니다.
-   ```
-   탭 순서: 10s | Simple | Advanced | Sounds
-                          ↑ 이걸 클릭
-   ```
-3. Lyrics, Styles 입력폼이 보이는 상태로 둡니다.
-
-### 실행
+### 5단계: UI 학습 (최초 1회)
 
 ```bash
 source .venv/bin/activate
-export $(cat .env | xargs)
-
 python suno_learn.py
 ```
 
-- Claude가 화면을 분석해서 각 버튼 위치를 자동으로 찾습니다.
-- 찾은 위치가 맞으면 `y`, 틀리면 `n` 입력 후 직접 클릭합니다.
-- 완료되면 `suno_actions.json` 파일이 생성됩니다.
+- Chrome에서 **https://suno.com/create** 를 열어두기 (Advanced 탭)
+- Claude가 각 버튼 위치를 자동으로 학습 → `suno_actions.json` 저장
+- Suno UI가 변경되면 재학습 필요 (메뉴 → 🔄 UI 재학습)
 
-> **강제 재학습이 필요한 경우:**
-> ```bash
-> python suno_learn.py --force
-> ```
+### 6단계: 설정
 
----
+앱 실행 후 메뉴 → **⚙️ 설정...**
 
-## 7. 자동 실행 (suno_runner.py)
+| 설정 항목 | 설명 |
+|-----------|------|
+| Anthropic API 키 | Claude Haiku 사용 (가사 생성, UI 탐지) |
+| 프로젝트 폴더 | 기본: ~/SunoProjects |
+| 기본 음악 스타일 | Suno 스타일 프롬프트 기본값 |
+| 보컬 타입 | 여성/남성/없음 |
+| 곡 선택 방식 | 긴 곡 자동/랜덤/수동 |
+| 예약 실행 시간 | 예: `02:00` (비우면 예약 없음) |
+| YouTube 플레이리스트 ID | YouTube 재생목록에 자동 추가 |
+| YouTube 자동 업로드 | 체크 시 MP4 완성 후 자동 업로드 |
 
-학습이 완료되면 아래 명령어로 수노 자동화를 실행합니다.
-
-### 기본 실행
+### 7단계: 메뉴바 앱 실행
 
 ```bash
 source .venv/bin/activate
-export $(cat .env | xargs)
-
-python suno_runner.py
+python suno_menu_bar.py
 ```
 
-대화형으로 제목·가사·스타일을 입력하라고 나타납니다.
-
-### 인자로 바로 실행
-
-```bash
-python suno_runner.py \
-  --title "서울 봄날 감성" \
-  --prompt "벚꽃 흩날리는 한강변, 설레는 봄날 오후, 포근한 기억" \
-  --style "lofi K-pop chill piano acoustic"
-```
-
-### 곡 선택 방식 (--select)
-
-수노는 Create 1회당 같은 스타일의 곡을 **2곡** 생성합니다.
-`--select` 옵션으로 어떻게 처리할지 선택하세요:
-
-| 옵션 | 동작 | 다운로드 수 |
-|------|------|------------|
-| `--select manual` | 2곡 모두 보존, 직접 들어보고 선택 (기본값) | 2곡 |
-| `--select random` | 1곡을 랜덤으로 다운로드 | 1곡 |
-| `--select longest` | 2곡 중 파일 크기가 큰 곡(=긴 곡) 자동 선택 | 2곡 다운 후 1곡 보존 |
-
-```bash
-# 예시: 긴 곡 자동 선택
-python suno_runner.py \
-  --title "서울 봄날 감성" \
-  --prompt "벚꽃 흩날리는 한강변" \
-  --style "lofi chill" \
-  --select longest
-```
-
-### 실행 흐름 (9단계)
-
-```
-[1/9] Advanced 탭 클릭
-[2/9] 가사(Lyrics) 입력
-[3/9] 스타일(Styles) 입력
-[4/9] 스크롤 다운 (Song Title / Create 버튼 노출)
-[5/9] Song Title 입력
-[6/9] Create 버튼 클릭
-[7/9] 음악 생성 대기 (~100초, 프로그레스 바 표시)
-[8/9] Claude Haiku로 ⋮ 버튼 탐지 → Download → MP3 Audio
-[9/9] ~/Downloads MP3 → raw_data/{날짜}_{제목}/ 폴더 이동
-```
-
-### 다운로드 결과물
-
-```
-raw_data/
-  2026-04-01_서울_봄날_감성/
-    song_A.mp3           ← 선택된 곡
-  _should_delete/
-    song_B.mp3           ← 미선택 곡 (직접 확인 후 삭제)
-```
-
-> ⚠️ 실행 중 마우스를 **화면 왼쪽 상단 모서리**로 이동하면 즉시 중단됩니다 (안전 장치).
+상단 메뉴바에 **🎵** 아이콘이 나타남. 터미널 창 닫아도 계속 실행됨.
 
 ---
 
-## 7-1. 메뉴바 앱으로 실행 (터미널 불필요)
+## 사용 방법
 
-터미널 없이 맥OS 상단 메뉴바에서 바로 실행하고 싶다면 `.app` 으로 패키징할 수 있습니다.
+### 기본 사용
 
-### 한 번만 실행하는 빌드 명령어
+1. **📂 입력 폴더 열기** 클릭 → Finder 창 열림
+2. 준비한 이미지를 `input/` 폴더에 드래그앤드롭
+   - 파일명 = 곡 키워드 (한글/영문 모두 가능)
+3. **▶ 지금 실행** 클릭 또는 예약 시간 대기
+4. macOS 다이얼로그에서 "Chrome에서 suno.com/create 열었습니다" 확인 클릭
+5. 자동화 진행 → 완료 알림
+
+### 예약 실행
+
+- **⚙️ 설정...** → 예약 실행 시간 입력 (예: `03:00`)
+- 매일 해당 시각에 자동 실행
+
+### 진행 상황 확인
+
+- **📋 로그 보기** 클릭 → 최근 50줄 표시
+- `~/.suno_auto.log` 파일 직접 확인
+
+---
+
+## YouTube 연동 설정 (선택)
+
+### 1. Google Cloud Console 설정
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → 새 프로젝트 생성
+2. **YouTube Data API v3** 활성화
+3. **사용자 인증 정보** → **OAuth 클라이언트 ID** 생성 (유형: 데스크톱 앱)
+4. `client_secrets.json` 다운로드 → 프로젝트 폴더(`~/SunoAutoPlaylist/`)에 저장
+
+### 2. 최초 인증
+
+첫 YouTube 업로드 시 브라우저가 열려 Google 로그인 요청.
+인증 완료 후 `token.json` 자동 저장 → 이후 자동 갱신.
+
+### 3. 설정
+
+**⚙️ 설정...** → YouTube 섹션에서:
+- 자동 업로드 체크
+- 플레이리스트 ID 입력 (URL의 `PLxxxxxxx` 부분)
+- 공개 범위 선택 (public/unlisted/private)
+
+---
+
+## .app 빌드 (터미널 없이 실행)
 
 ```bash
-cd ~/Desktop/SunoAutoPlaylist
 source .venv/bin/activate
 bash build_app.sh
 ```
 
-약 1~2분 후 `dist/수노자동화.app` 이 생성됩니다.
-
-### 설치
-
-`dist/수노자동화.app` 을 **Applications 폴더로 드래그**합니다.
-
-### 최초 실행 시 보안 경고 우회
-
-macOS가 "개발자를 확인할 수 없습니다" 경고를 띄우면:
-1. **우클릭 → 열기 → 열기** (경고창에서 열기 클릭)
-2. 이후부터는 그냥 더블클릭으로 실행 가능
-
-### 접근성 권한 허용
-
-**시스템 환경설정 → 개인 정보 보호 및 보안 → 접근성** 에서
-`수노자동화` 를 추가하고 체크 표시 활성화 ([9. macOS 권한 설정](#9-macos-권한-설정) 참고)
-
-### 사용 방법
-
-Launchpad에서 `수노자동화` 실행 → 상단 메뉴바에 🎵 아이콘 상주
-
-```
-🎵 클릭
-├── ▶ 곡 만들기...    → 제목·가사·스타일·선택방식 입력창 → 자동 실행
-├── 🔄 UI 재학습       → 수노 UI가 바뀌었을 때 재학습
-├── 📁 결과물 폴더 열기 → raw_data/ 를 Finder에서 열기
-├── ⚙️ API 키 설정     → Anthropic API 키 입력 (처음 한 번)
-└── 종료
-```
-
-> ℹ️ 곡 만들기 실행 전에 Chrome에서 suno.com/create 를 열고 로그인 상태를 확인하세요.
+`dist/수노자동화.app` 생성 → Launchpad에서 실행 가능.
 
 ---
 
-## 8. 웹 UI 실행 (선택)
-
-터미널 대신 브라우저에서 조작하고 싶을 때 사용합니다.
-
-### 백엔드 API 서버 실행
-
-```bash
-# 터미널 1
-cd ~/Desktop/SunoAutoPlaylist
-source .venv/bin/activate
-export $(cat .env | xargs)
-python api.py
-# → http://localhost:8000 에서 실행
-```
-
-### 프론트엔드 실행
-
-```bash
-# 터미널 2
-cd ~/Desktop/SunoAutoPlaylist/frontend
-npm install          # 처음 한 번만
-npm start
-# → http://localhost:3000 에서 실행
-```
-
-브라우저에서 `http://localhost:3000` 으로 접속합니다.
-
-> ℹ️ 처음 접속 시 Google 로그인이 필요합니다 (Firebase Auth).
-> ⚙️ API 키 설정 버튼에서 Anthropic API 키를 입력해두면 웹 UI에서도 자동 탐지가 동작합니다.
-
----
-
-## 9. macOS 권한 설정
-
-pyautogui가 마우스를 제어하고 화면을 캡처하려면 macOS 보안 권한이 필요합니다.
-**최초 실행 시 아래 두 가지를 허용해야 합니다.**
-
-### 접근성 (Accessibility) 권한
-
-> 마우스 클릭·키보드 입력 자동화에 필요
-
-1. **시스템 환경설정** → **개인 정보 보호 및 보안** → **접근성**
-2. 목록에서 **터미널** (또는 iTerm2) 을 찾아 **체크 표시** 활성화
-3. 없으면 `+` 버튼으로 추가
-
-### 화면 녹화 (Screen Recording) 권한
-
-> 스크린샷 캡처에 필요
-
-1. **시스템 환경설정** → **개인 정보 보호 및 보안** → **화면 녹화**
-2. **터미널** (또는 iTerm2) 을 찾아 **체크 표시** 활성화
-3. 없으면 `+` 버튼으로 추가
-
-> 권한 변경 후 터미널을 **완전히 종료 후 재시작**해야 적용됩니다.
-
----
-
-## 10. 폴더 구조
+## 코드 구조
 
 ```
 SunoAutoPlaylist/
-├── suno_runner.py        ← 자동 실행 메인 스크립트
-├── suno_learn.py         ← UI 좌표 자동 학습
-├── suno_ui_checker.py    ← 시작 시 UI 변경 감지 (토큰 최소화)
-├── suno_login.py         ← 수노 로그인 세션 저장 (최초 1회)
-├── api.py                ← 웹 UI용 FastAPI 백엔드
-├── server.py             ← Claude Desktop MCP 서버
-├── media_processing.py   ← MP3 → MP4 변환
-├── youtube_upload.py     ← YouTube 업로드
-├── requirements.txt      ← Python 패키지 목록
-├── .env                  ← API 키 (직접 생성, Git 제외)
-├── suno_actions.json     ← 학습된 UI 좌표 (자동 생성, Git 제외)
-├── suno_state.json       ← UI 상태 캐시 (자동 생성, Git 제외)
-├── raw_data/             ← 다운로드된 MP3 (자동 생성, Git 제외)
-│   ├── 2026-04-01_제목/
-│   │   └── song.mp3
-│   └── _should_delete/   ← 미선택 곡 임시 보관
-├── downloads/            ← 구버전 다운로드 폴더
-├── output/               ← MP4 변환 결과물
-└── frontend/             ← React 웹 UI
-    └── src/
-        ├── App.jsx
-        ├── api.js
-        └── components/
+├── suno_menu_bar.py        ← 메뉴바 앱 진입점 (rumps)
+├── suno_pipeline.py        ← 파이프라인 오케스트레이터
+├── suno_lyrics_gen.py      ← Claude Haiku: 가사/스타일/설명 생성
+├── suno_project_manager.py ← 프로젝트 큐 관리
+├── suno_settings.py        ← 설정 창 (tkinter)
+├── suno_runner.py          ← Suno pyautogui 자동화
+├── suno_learn.py           ← UI 좌표 학습
+├── suno_ui_checker.py      ← UI 변경 감지 (3-stage token guard)
+├── media_processing.py     ← FFmpeg MP3+이미지 → MP4
+├── youtube_upload.py       ← YouTube Data API v3 업로드
+├── playlist.py             ← M3U 재생목록 생성
+├── server.py               ← MCP 서버 (Claude Desktop 연동)
+├── build_app.sh            ← PyInstaller .app 빌드 스크립트
+└── requirements.txt
 ```
 
 ---
 
-## 11. 자주 묻는 문제
+## 문제 해결
 
-### Q. 가상환경 활성화를 매번 해야 하나요?
+| 증상 | 해결 방법 |
+|------|-----------|
+| 클릭이 잘못된 위치에 됨 | 메뉴 → 🔄 UI 재학습 |
+| MP3 파일을 못 찾음 | ~/Downloads 폴더 확인, 다운로드 완료 후 재시도 |
+| YouTube 업로드 실패 | client_secrets.json 존재 여부 확인, OAuth 재인증 |
+| API 키 오류 | ⚙️ 설정에서 API 키 재입력 |
+| 앱이 멈춤 | 📋 로그 보기로 오류 확인 후 종료 → 재시작 |
 
-터미널을 새로 열 때마다 아래 두 줄을 실행하세요:
-
-```bash
-cd ~/Desktop/SunoAutoPlaylist
-source .venv/bin/activate
-export $(cat .env | xargs)
-```
-
-편하게 하려면 `~/.zshrc` 에 alias를 추가할 수 있습니다:
-
-```bash
-echo 'alias suno="cd ~/Desktop/SunoAutoPlaylist && source .venv/bin/activate && export $(cat .env | xargs)"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-이후 `suno` 명령어 하나로 준비 완료.
-
----
-
-### Q. pyautogui가 마우스를 움직이지 않아요
-
-macOS 접근성 권한이 없는 경우입니다. [9. macOS 권한 설정](#9-macos-권한-설정) 을 확인하세요.
-
----
-
-### Q. 스크린샷이 까만 화면으로 나와요
-
-macOS 화면 녹화 권한이 없는 경우입니다. [9. macOS 권한 설정](#9-macos-권한-설정) 을 확인하세요.
-
----
-
-### Q. 수노 페이지가 열리지 않거나 로그인이 안 돼요
-
-세션이 만료된 경우입니다. 로그인을 다시 저장하세요:
-
-```bash
-python suno_login.py
-```
-
----
-
-### Q. UI가 바뀌어서 클릭 위치가 틀려요
-
-자동 재학습을 실행하세요:
-
-```bash
-python suno_learn.py --force
-```
-
-또는 수동으로 UI 체크만:
-
-```bash
-python suno_ui_checker.py --force
-```
-
----
-
-### Q. `suno_actions.json`이 없다는 오류가 나요
-
-`suno_learn.py`를 먼저 실행해야 합니다. [6. 첫 UI 학습](#6-첫-ui-학습-suno_learnpy) 을 참고하세요.
-
----
-
-### Q. 다운로드 파일이 raw_data/에 없어요
-
-`~/Downloads` 폴더를 직접 확인해보세요. 파일 이동은 `suno_runner.py`가 macOS의 `~/Downloads` 에서 자동으로 가져오는데, 간혹 수노가 다른 폴더에 저장하는 경우가 있습니다.
-
----
-
-## 전체 실행 순서 요약
-
-```
-# ① 처음 한 번만 (환경 세팅)
-git clone https://github.com/minsu0192/SunoAutoPlaylist.git
-cd SunoAutoPlaylist
-git checkout claude/suno-playlist-maker-jixsq
-python3.11 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
-
-# ② 처음 한 번만 (UI 좌표 학습)
-# → 먼저 Chrome에서 suno.com/create 열고 Advanced 탭 클릭 후 실행
-source .venv/bin/activate
-export $(cat .env | xargs)
-python suno_learn.py
-
-# ③ 매번 실행
-# → Chrome에서 suno.com/create 열고 로그인 확인 후 실행
-source .venv/bin/activate
-export $(cat .env | xargs)
-python suno_runner.py --title "제목" --prompt "가사" --style "스타일" --select longest
-```
+> 로그 위치: `~/.suno_auto.log`

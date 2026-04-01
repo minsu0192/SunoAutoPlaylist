@@ -248,9 +248,11 @@ def select_song(moved: list[Path], mode: str) -> list[Path]:
 # ---------------------------------------------------------------------------
 # 다운로드 파일 이동
 # ---------------------------------------------------------------------------
-def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path]:
+def move_downloads_to_raw_data(title: str, expected_count: int = 2,
+                               output_dir: Path = None) -> list:
     """
-    ~/Downloads 에서 가장 최근 MP3 파일을 raw_data/{날짜}_{제목}/ 으로 이동.
+    ~/Downloads 에서 가장 최근 MP3 파일을 목적 폴더로 이동.
+    output_dir이 지정되면 그 폴더에, 없으면 raw_data/{날짜}_{제목}/ 에 저장.
     이동된 파일 경로 리스트 반환.
     """
     downloads_dir = Path.home() / "Downloads"
@@ -258,7 +260,6 @@ def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path
         print("  ⚠️  ~/Downloads 폴더를 찾을 수 없습니다.")
         return []
 
-    # 최근 파일 수집 (최대 30초 전 생성된 mp3)
     now = time.time()
     recent_mp3s = sorted(
         [f for f in downloads_dir.glob("*.mp3") if now - f.stat().st_mtime < 120],
@@ -270,16 +271,20 @@ def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path
         print("  ⚠️  ~/Downloads에서 최근 MP3 파일을 찾지 못했습니다.")
         return []
 
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)[:40]
-    dest_dir = RAW_DATA_DIR / f"{date_str}_{safe_title}"
+    if output_dir:
+        dest_dir = Path(output_dir)
+    else:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)[:40]
+        dest_dir = RAW_DATA_DIR / f"{date_str}_{safe_title}"
+
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     moved = []
-    for i, src in enumerate(recent_mp3s, 1):
+    for src in recent_mp3s:
         dst = dest_dir / src.name
         shutil.move(str(src), str(dst))
-        print(f"  📁 이동: {src.name} → raw_data/{dest_dir.name}/")
+        print(f"  📁 이동: {src.name} → {dest_dir.name}/")
         moved.append(dst)
 
     return moved
@@ -288,7 +293,15 @@ def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path
 # ---------------------------------------------------------------------------
 # 메인 실행 플로우
 # ---------------------------------------------------------------------------
-def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "manual"):
+def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "manual",
+        output_dir: Path = None, interactive: bool = True) -> list:
+    """
+    Suno 자동 조작 후 최종 선택된 MP3 파일 경로 리스트 반환.
+
+    Args:
+        output_dir:   지정 시 raw_data/ 대신 해당 폴더에 MP3 저장.
+        interactive:  False이면 "준비 완료 Enter" 프롬프트 생략 (pipeline 모드).
+    """
     actions = load_actions()
 
     SELECT_LABELS = {"manual": "수동 선택 (2곡 모두 보존)", "random": "랜덤 1곡", "longest": "긴 곡 자동 선택"}
@@ -303,10 +316,11 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
     print()
     print("⚠️  마우스를 화면 왼쪽 상단으로 이동하면 즉시 중단됩니다.")
     print()
-    print("준비:")
-    print("  1. 크롬에서 https://suno.com/create 를 여세요")
-    print("  2. 로그인 상태를 확인하세요")
-    input("  3. 준비 완료 후 Enter ▶ ")
+    if interactive:
+        print("준비:")
+        print("  1. 크롬에서 https://suno.com/create 를 여세요")
+        print("  2. 로그인 상태를 확인하세요")
+        input("  3. 준비 완료 후 Enter ▶ ")
 
     time.sleep(1)
 
@@ -376,7 +390,8 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
 
     # [9/9] 파일 이동 + 곡 선택
     print("\n[9/9] 다운로드 파일 이동 및 최종 선택...")
-    moved = move_downloads_to_raw_data(title, expected_count=dl_count)
+    moved = move_downloads_to_raw_data(title, expected_count=dl_count,
+                                       output_dir=output_dir)
     final = select_song(moved, mode=select)
 
     print()
@@ -395,6 +410,7 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
     print()
     print("다음 단계: 선택한 곡으로 YouTube 업로드를 진행하세요")
     print("=" * 55)
+    return final
 
 
 # ---------------------------------------------------------------------------

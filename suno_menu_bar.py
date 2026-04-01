@@ -1,228 +1,283 @@
 """
-수노 자동화 메뉴바 앱
-macOS 상단 메뉴바에 🎵 아이콘으로 상주합니다.
+수노 자동화 — macOS 메뉴바 앱
+rumps 기반. Dock에 나타나지 않고 상단 메뉴바에만 🎵 아이콘으로 표시.
+
+기능:
+  - 큐 관리: ~/SunoProjects/input/ 폴더 감시, 대기 항목 수 표시
+  - 예약 실행: 매분 체크, 설정 시간에 자동 실행
+  - 지금 실행: 큐에서 첫 번째 대기 항목 즉시 처리
+  - 설정 창: tkinter 설정 창 (subprocess)
+  - 로그 보기: ~/.suno_auto.log 최근 50줄
 
 실행: python suno_menu_bar.py
-앱 빌드: bash build_app.sh
+빌드: bash build_app.sh
 """
 
+import json
 import os
-import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import rumps
 
-BASE_DIR = Path(__file__).parent
-RAW_DATA_DIR = BASE_DIR / "raw_data"
+from suno_project_manager import ProjectManager
+
+CONFIG_FILE = Path.home() / ".suno_config.json"
+LOG_FILE    = Path.home() / ".suno_auto.log"
+SCRIPT_DIR  = Path(__file__).parent
 
 
 # ---------------------------------------------------------------------------
-# osascript 헬퍼 (네이티브 macOS 다이얼로그)
+# 헬퍼
 # ---------------------------------------------------------------------------
+
+def load_config() -> dict:
+    if CONFIG_FILE.exists():
+        try:
+            return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _get_pm(config: dict) -> ProjectManager:
+    root = Path(config.get("projects_root", "~/SunoProjects")).expanduser()
+    return ProjectManager(root)
+
+
+def _append_log(text: str):
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        f.write(f"[{ts}] {text}\n")
+
+
+def _read_log_tail(n: int = 50) -> str:
+    if not LOG_FILE.exists():
+        return "로그가 없습니다."
+    lines = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-n:]) or "로그가 비어 있습니다."
+
+
 def _osascript(script: str) -> str:
-    result = subprocess.run(
-        ["osascript", "-e", script],
-        capture_output=True, text=True,
-    )
-    return result.stdout.strip()
-
-
-def ask_text(prompt: str, default: str = "") -> str | None:
-    """텍스트 입력 다이얼로그. 취소 시 None 반환."""
-    # 따옴표 이스케이프
-    prompt_escaped = prompt.replace('"', '\\"')
-    default_escaped = default.replace('"', '\\"')
-    raw = _osascript(
-        f'display dialog "{prompt_escaped}" '
-        f'default answer "{default_escaped}" '
-        f'with title "🎵 수노 자동화" '
-        f'buttons {{"취소", "확인"}} default button "확인"'
-    )
-    if not raw or "button returned:확인" not in raw:
-        return None
-    match = re.search(r"text returned:(.*)", raw)
-    return match.group(1).strip() if match else None
-
-
-def ask_select() -> str | None:
-    """곡 선택 방식 선택 다이얼로그. 취소 시 None 반환."""
-    raw = _osascript(
-        'choose from list {"직접 선택 (2곡 모두 보존)", "랜덤 1곡", "긴 곡 자동 선택"} '
-        'with title "🎵 선택 방식" '
-        'with prompt "곡 선택 방식을 고르세요:" '
-        'default items {"직접 선택 (2곡 모두 보존)"}'
-    )
-    if not raw or raw == "false":
-        return None
-    if "랜덤" in raw:
-        return "random"
-    if "긴 곡" in raw:
-        return "longest"
-    return "manual"
-
-
-def ask_password(prompt: str) -> str | None:
-    """비밀번호(숨김) 입력 다이얼로그. 취소 시 None 반환."""
-    prompt_escaped = prompt.replace('"', '\\"')
-    raw = _osascript(
-        f'display dialog "{prompt_escaped}" '
-        f'default answer "" '
-        f'with hidden answer '
-        f'with title "⚙️ API 키 설정" '
-        f'buttons {{"취소", "저장"}} default button "저장"'
-    )
-    if not raw or "button returned:저장" not in raw:
-        return None
-    match = re.search(r"text returned:(.*)", raw)
-    return match.group(1).strip() if match else None
-
-
-def load_api_key() -> str:
-    """환경변수 또는 .env 파일에서 API 키 로드."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        env_file = BASE_DIR / ".env"
-        if env_file.exists():
-            for line in env_file.read_text().splitlines():
-                if line.startswith("ANTHROPIC_API_KEY="):
-                    key = line.split("=", 1)[1].strip()
-                    os.environ["ANTHROPIC_API_KEY"] = key
-                    break
-    return key
+    r = subprocess.run(["osascript", "-e", script],
+                       capture_output=True, text=True)
+    return r.stdout.strip()
 
 
 # ---------------------------------------------------------------------------
-# 메뉴바 앱
+# 메인 앱
 # ---------------------------------------------------------------------------
+
 class SunoMenuBar(rumps.App):
+
     def __init__(self):
         super().__init__("🎵", quit_button=None)
-        self._proc = None
+        self._proc    = None   # 실행 중인 pipeline subprocess
+        self._log_fd  = None   # 로그 파일 핸들
 
-        # API 키 초기 로드
-        load_api_key()
-
-        self.status_item = rumps.MenuItem("● 준비됨")
-        self.status_item.set_callback(None)  # 클릭 불가 상태 표시용
+        # 동적 타이틀 메뉴 아이템
+        self.run_item      = rumps.MenuItem("▶ 지금 실행  (스캔 중...)", callback=self.run_now)
+        self.schedule_item = rumps.MenuItem("⏰ 예약: 없음",  callback=None)
+        self.status_item   = rumps.MenuItem("● 준비됨",       callback=None)
 
         self.menu = [
-            rumps.MenuItem("▶ 곡 만들기...", callback=self.make_song),
-            rumps.MenuItem("🔄 UI 재학습", callback=self.relearn),
-            rumps.MenuItem("📁 결과물 폴더 열기", callback=self.open_folder),
+            self.run_item,
+            self.schedule_item,
             None,
-            rumps.MenuItem("⚙️ API 키 설정", callback=self.set_api_key),
+            rumps.MenuItem("📂 입력 폴더 열기",   callback=self.open_input),
+            rumps.MenuItem("📁 결과물 폴더 열기",  callback=self.open_output),
+            rumps.MenuItem("📋 로그 보기",         callback=self.show_log),
+            None,
+            rumps.MenuItem("🔄 UI 재학습",         callback=self.relearn),
+            rumps.MenuItem("⚙️ 설정...",           callback=self.open_settings),
             None,
             self.status_item,
             None,
             rumps.MenuItem("종료", callback=rumps.quit_application),
         ]
 
-    # ── 곡 만들기 ──────────────────────────────────────────────
-    @rumps.clicked("▶ 곡 만들기...")
-    def make_song(self, _):
-        # 이미 실행 중이면 알림만 표시
+        # 60초마다: 예약 체크 + 큐 갱신 + 완료 체크
+        self._tick_timer = rumps.Timer(self._tick, 60)
+        self._tick_timer.start()
+
+        # 시작 시 즉시 스캔
+        self._refresh_menu()
+        self._check_first_run()
+
+    # ------------------------------------------------------------------
+    # 주기 작업
+    # ------------------------------------------------------------------
+
+    def _tick(self, _):
+        self._refresh_menu()
+        self._check_schedule()
+        self._check_proc_done()
+
+    def _refresh_menu(self):
+        try:
+            config = load_config()
+            pm = _get_pm(config)
+            pm.scan_input()
+            stats = pm.get_stats()
+            n = stats.get("pending", 0)
+            self.run_item.title = (
+                f"▶ 지금 실행  ({n}개 대기 중)" if n else "▶ 지금 실행  (대기 없음)"
+            )
+            schedule = config.get("schedule_time", "")
+            self.schedule_item.title = (
+                f"⏰ 예약: {schedule}" if schedule else "⏰ 예약: 없음"
+            )
+        except Exception:
+            pass
+
+    def _check_schedule(self):
         if self._proc and self._proc.poll() is None:
-            rumps.notification("🎵 수노", "이미 실행 중", "현재 생성이 끝난 후 다시 시도하세요.")
             return
-
-        # API 키 확인
-        api_key = load_api_key()
-        if not api_key:
-            rumps.notification("⚙️ API 키 없음", "", "메뉴 → API 키 설정에서 먼저 입력하세요.")
+        config = load_config()
+        schedule = config.get("schedule_time", "").strip()
+        if not schedule:
             return
+        now = datetime.now().strftime("%H:%M")
+        if now == schedule:
+            _append_log(f"예약 실행 시작 ({schedule})")
+            self._start_next_project(config)
 
-        # 입력 다이얼로그
-        title = ask_text("곡 제목:", "서울 봄날 감성")
-        if title is None:
+    def _check_proc_done(self):
+        if not self._proc:
             return
-
-        prompt = ask_text("가사 / 프롬프트:", "벚꽃 흩날리는 한강변, 설레는 봄날 오후")
-        if prompt is None:
+        ret = self._proc.poll()
+        if ret is None:
             return
+        if self._log_fd:
+            self._log_fd.close()
+            self._log_fd = None
+        if ret == 0:
+            self.status_item.title = "● 완료"
+            _append_log("파이프라인 완료")
+            rumps.notification("🎵 수노 완료", "성공", "로그 보기에서 결과를 확인하세요.")
+        else:
+            self.status_item.title = "● 오류 발생"
+            _append_log(f"파이프라인 오류 (코드 {ret})")
+            rumps.notification("🎵 수노 오류", f"종료 코드 {ret}", "로그 보기에서 오류를 확인하세요.")
+        self._proc = None
+        self._refresh_menu()
 
-        style = ask_text("스타일 (장르·분위기):", "lofi K-pop chill piano acoustic")
-        if style is None:
+    # ------------------------------------------------------------------
+    # 실행
+    # ------------------------------------------------------------------
+
+    @rumps.clicked("▶ 지금 실행  (대기 없음)")
+    def run_now(self, _):
+        if self._proc and self._proc.poll() is None:
+            rumps.notification("🎵 수노", "이미 실행 중", "완료 후 다시 시도하세요.")
             return
-
-        select = ask_select()
-        if select is None:
+        config = load_config()
+        pm = _get_pm(config)
+        pm.scan_input()
+        if not pm.get_pending():
+            rumps.notification("🎵 수노", "대기 없음",
+                               "입력 폴더(📂)에 이미지를 넣어주세요.")
             return
+        self._start_next_project(config)
 
-        # suno_runner.py 서브프로세스 실행
-        env = {**os.environ, "ANTHROPIC_API_KEY": api_key}
+    def _start_next_project(self, config: dict):
+        pm = _get_pm(config)
+        pending = pm.get_pending()
+        if not pending:
+            return
+        project_id = pending[0]["id"]
+        keyword    = pending[0].get("keyword", project_id)
+
+        _append_log(f"프로젝트 시작: {project_id}")
+        self.status_item.title = f"⏳ {keyword[:20]}..."
+
+        api_key = config.get("anthropic_api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+        env = {**os.environ}
+        if api_key:
+            env["ANTHROPIC_API_KEY"] = api_key
+
+        log_fd = LOG_FILE.open("a", encoding="utf-8")
+        self._log_fd = log_fd
         self._proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(BASE_DIR / "suno_runner.py"),
-                "--title",  title,
-                "--prompt", prompt,
-                "--style",  style,
-                "--select", select,
-                "--skip-ui-check",
-            ],
-            cwd=str(BASE_DIR),
-            env=env,
+            [sys.executable, str(SCRIPT_DIR / "suno_pipeline.py"),
+             "--project-id", project_id],
+            stdout=log_fd, stderr=log_fd, env=env,
+        )
+        self._refresh_menu()
+
+        # 완료 체크 타이머 (10초 간격)
+        if hasattr(self, "_done_timer") and self._done_timer:
+            self._done_timer.stop()
+        self._done_timer = rumps.Timer(self._check_proc_done, 10)
+        self._done_timer.start()
+
+    # ------------------------------------------------------------------
+    # 메뉴 콜백
+    # ------------------------------------------------------------------
+
+    @rumps.clicked("📂 입력 폴더 열기")
+    def open_input(self, _):
+        config = load_config()
+        d = Path(config.get("projects_root", "~/SunoProjects")).expanduser() / "input"
+        d.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["open", str(d)])
+
+    @rumps.clicked("📁 결과물 폴더 열기")
+    def open_output(self, _):
+        config = load_config()
+        d = Path(config.get("projects_root", "~/SunoProjects")).expanduser() / "projects"
+        d.mkdir(parents=True, exist_ok=True)
+        subprocess.Popen(["open", str(d)])
+
+    @rumps.clicked("📋 로그 보기")
+    def show_log(self, _):
+        tail = _read_log_tail(50)
+        escaped = (tail.replace("\\", "\\\\")
+                       .replace('"', '\\"')
+                       .replace("\n", "\\n"))
+        _osascript(
+            f'display dialog "{escaped}" '
+            f'with title "수노 자동화 — 최근 로그" '
+            f'buttons {{"닫기"}} default button "닫기"'
         )
 
-        self.status_item.title = "⏳ 실행 중..."
-        rumps.notification("🎵 수노", "시작", f'"{title}" 생성을 시작합니다.\nChrome에서 suno.com/create를 열어두세요.')
-
-        # 10초마다 완료 여부 확인
-        self._timer = rumps.Timer(self._check_done, 10)
-        self._timer.start()
-
-    def _check_done(self, timer):
-        if self._proc and self._proc.poll() is not None:
-            code = self._proc.returncode
-            self.status_item.title = "● 준비됨"
-            if code == 0:
-                rumps.notification("🎵 수노", "완료 ✅", "MP3 다운로드가 완료됐습니다.\n결과물 폴더를 확인하세요.")
-            else:
-                rumps.notification("🎵 수노", "오류 ❌", f"실행 중 오류가 발생했습니다. (코드 {code})")
-            timer.stop()
-
-    # ── UI 재학습 ───────────────────────────────────────────────
     @rumps.clicked("🔄 UI 재학습")
     def relearn(self, _):
-        api_key = load_api_key()
-        env = {**os.environ, "ANTHROPIC_API_KEY": api_key}
-        subprocess.Popen(
-            [sys.executable, str(BASE_DIR / "suno_learn.py"), "--force"],
-            cwd=str(BASE_DIR),
-            env=env,
-        )
-        rumps.notification("🔄 UI 재학습", "시작", "터미널 창에서 진행 상황을 확인하세요.")
-
-    # ── 결과물 폴더 열기 ────────────────────────────────────────
-    @rumps.clicked("📁 결과물 폴더 열기")
-    def open_folder(self, _):
-        RAW_DATA_DIR.mkdir(exist_ok=True)
-        subprocess.run(["open", str(RAW_DATA_DIR)])
-
-    # ── API 키 설정 ─────────────────────────────────────────────
-    @rumps.clicked("⚙️ API 키 설정")
-    def set_api_key(self, _):
-        key = ask_password("Anthropic API 키를 입력하세요\n(sk-ant-api03-...)")
-        if not key:
+        config = load_config()
+        api_key = config.get("anthropic_api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            rumps.notification("⚙️ API 키 없음", "", "설정(⚙️)에서 API 키를 먼저 입력하세요.")
             return
+        env = {**os.environ, "ANTHROPIC_API_KEY": api_key}
+        log_fd = LOG_FILE.open("a", encoding="utf-8")
+        subprocess.Popen(
+            [sys.executable, str(SCRIPT_DIR / "suno_learn.py"), "--force"],
+            stdout=log_fd, stderr=log_fd, env=env,
+        )
+        rumps.notification("🔄 UI 재학습", "시작됨", "📋 로그 보기에서 진행 상황을 확인하세요.")
 
-        # .env 파일 업데이트
-        env_file = BASE_DIR / ".env"
-        lines = env_file.read_text().splitlines() if env_file.exists() else []
-        lines = [l for l in lines if not l.startswith("ANTHROPIC_API_KEY")]
-        lines.append(f"ANTHROPIC_API_KEY={key}")
-        env_file.write_text("\n".join(lines) + "\n")
+    @rumps.clicked("⚙️ 설정...")
+    def open_settings(self, _):
+        subprocess.Popen([sys.executable, str(SCRIPT_DIR / "suno_settings.py")])
 
-        # 현재 프로세스 환경변수도 업데이트
-        os.environ["ANTHROPIC_API_KEY"] = key
+    # ------------------------------------------------------------------
+    # 첫 실행 체크
+    # ------------------------------------------------------------------
 
-        rumps.notification("⚙️ API 키", "저장 완료 ✅", ".env 파일에 저장됐습니다.")
+    def _check_first_run(self):
+        if not (SCRIPT_DIR / "suno_actions.json").exists():
+            rumps.notification(
+                "🎵 수노 자동화",
+                "최초 실행 — UI 학습 필요",
+                "메뉴 → 🔄 UI 재학습을 먼저 실행하세요.",
+            )
 
 
 # ---------------------------------------------------------------------------
 # 진입점
 # ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     SunoMenuBar().run()
