@@ -202,24 +202,32 @@ def click_download_mp3(menu_coords: dict, song_idx: int):
 # ---------------------------------------------------------------------------
 # 곡 선택 (다운로드 후 적용)
 # ---------------------------------------------------------------------------
+DISCARD_DIR = RAW_DATA_DIR / "_should_delete"
+
+
 def select_song(moved: list[Path], mode: str) -> list[Path]:
     """
     mode:
       manual  — 2곡 모두 보존, 사용자가 나중에 직접 선택
-      random  — 1곡 랜덤 보존, 나머지 삭제
-      longest — 파일 크기가 큰 쪽 보존 (같은 품질이면 크기 ≈ 길이)
+      random  — 1곡 랜덤 보존, 나머지는 _should_delete/ 로 이동
+      longest — 파일 크기가 큰 쪽 보존, 나머지는 _should_delete/ 로 이동
     반환: 최종 보존된 파일 리스트
     """
     if len(moved) <= 1 or mode == "manual":
         return moved
+
+    def move_to_discard(f: Path, reason: str):
+        DISCARD_DIR.mkdir(parents=True, exist_ok=True)
+        dst = DISCARD_DIR / f.name
+        shutil.move(str(f), str(dst))
+        print(f"  📂 → _should_delete/ ({reason}): {f.name}")
 
     if mode == "random":
         import random
         kept = random.choice(moved)
         for f in moved:
             if f != kept:
-                f.unlink(missing_ok=True)
-                print(f"  🗑️  삭제 (랜덤 미선택): {f.name}")
+                move_to_discard(f, "랜덤 미선택")
         print(f"  🎲 랜덤 선택: {kept.name}")
         return [kept]
 
@@ -228,9 +236,8 @@ def select_song(moved: list[Path], mode: str) -> list[Path]:
         kept = max(sizes, key=sizes.get)
         for f in moved:
             if f != kept:
-                f.unlink(missing_ok=True)
                 size_mb = sizes[f] / 1024 / 1024
-                print(f"  🗑️  삭제 (짧은 곡 {size_mb:.1f}MB): {f.name}")
+                move_to_discard(f, f"짧은 곡 {size_mb:.1f}MB")
         size_mb = sizes[kept] / 1024 / 1024
         print(f"  📏 긴 곡 선택 ({size_mb:.1f}MB): {kept.name}")
         return [kept]
