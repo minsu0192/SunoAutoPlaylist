@@ -57,11 +57,21 @@ class SettingsWindow:
         sh = self.root.winfo_screenheight()
         self.root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
-        # macOS Cmd+V / Cmd+C / Cmd+A / Cmd+X 지원 (tk.Entry + ttk.Entry 모두)
+        # macOS Cmd+V: 클립보드 직접 읽어서 삽입 (show="*" 필드 호환)
+        def _paste(e):
+            try:
+                text = e.widget.clipboard_get()
+                try:
+                    e.widget.delete("sel.first", "sel.last")
+                except Exception:
+                    pass
+                e.widget.insert("insert", text)
+            except Exception:
+                pass
+            return "break"
+
         for cls in ("Entry", "TEntry"):
-            self.root.bind_class(cls, "<Command-v>", lambda e: e.widget.event_generate("<<Paste>>"))
-            self.root.bind_class(cls, "<Command-c>", lambda e: e.widget.event_generate("<<Copy>>"))
-            self.root.bind_class(cls, "<Command-x>", lambda e: e.widget.event_generate("<<Cut>>"))
+            self.root.bind_class(cls, "<Command-v>", _paste)
             self.root.bind_class(cls, "<Command-a>", lambda e: e.widget.select_range(0, "end"))
 
         self._build_ui()
