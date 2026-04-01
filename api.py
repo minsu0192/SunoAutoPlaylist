@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -63,14 +63,17 @@ def create_job(job_type: str) -> str:
     return job_id
 
 
-def update_job(job_id: str, status: str, result=None, error=None):
+def update_job(job_id: str, status: str, result=None, error=None, progress: dict = None):
     if job_id in jobs:
-        jobs[job_id].update({
+        update = {
             "status":     status,
             "updated_at": datetime.utcnow().isoformat(),
             "result":     result,
             "error":      error,
-        })
+        }
+        if progress is not None:
+            update["progress"] = progress
+        jobs[job_id].update(update)
 
 # ──────────────────────────────────────────
 # 요청 모델
@@ -102,6 +105,9 @@ class PipelineRequest(BaseModel):
     prompt: str
     style: str = ""
     yt_playlist: Optional[str] = None
+
+class UiCheckRequest(BaseModel):
+    force: bool = False
 
 # ──────────────────────────────────────────
 # 헬스체크 & 목록 조회
@@ -270,6 +276,73 @@ async def _run_pipeline(job_id: str, req: PipelineRequest):
     pipeline_result["uploads"] = upload_results
 
     update_job(job_id, "done", result=pipeline_result)
+
+# ──────────────────────────────────────────
+# UI 변경 감지
+# ──────────────────────────────────────────
+@app.post("/ui-check")
+async def ui_check(
+    req: UiCheckRequest,
+    x_anthropic_api_key: Optional[str] = Header(default=None, alias="X-Anthropic-Api-Key"),
+):
+    job_id = create_job("ui_check")
+    asyncio.create_task(_run_ui_check(job_id, req.force, x_anthropic_api_key))
+    return {"job_id": job_id}
+
+
+async def _run_ui_check(job_id: str, force: bool, api_key: Optional[str]):
+    from suno_ui_checker import SunoUIChecker, STATE_FILE
+
+    if force and STATE_FILE.exists():
+        STATE_FILE.unlink()
+
+    def on_progress(step: int, total: int, message: str, eta: float):
+        pct = int(step / total * 100)
+        update_job(job_id, "running", progress={"step": step, "total": total, "pct": pct, "message": message, "eta": eta})
+
+    update_job(job_id, "running", progress={"step": 0, "total": 5, "pct": 0, "message": "수노의 UI 변경사항을 확인하는 중입니다...", "eta": 8.0})
+
+    loop = asyncio.get_event_loop()
+    checker = SunoUIChecker(api_key=api_key or "")
+    report = await loop.run_in_executor(None, lambda: checker.run_check(progress_callback=on_progress))
+
+    result = {
+        "changed": report.changed,
+        "changed_rois": report.changed_rois,
+        "coords_updated": report.coords_updated,
+        "tokens_used": report.tokens_used,
+        "duration_sec": round(report.duration_sec, 2),
+        "message": report.message,
+    }
+    update_job(job_id, "done", result=result)
+
+
+@app.get("/ui-state")
+async def get_ui_state():
+    from suno_ui_checker import STATE_FILE, ACTIONS_FILE
+    import json
+
+    state = {}
+    if STATE_FILE.exists():
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    actions = {}
+    if ACTIONS_FILE.exists():
+        try:
+            actions = json.loads(ACTIONS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return {
+        "last_checked": state.get("last_checked"),
+        "check_stats": state.get("check_stats"),
+        "has_coords": bool(actions),
+        "coord_keys": list(actions.keys()),
+    }
+
 
 # ──────────────────────────────────────────
 # 진입점

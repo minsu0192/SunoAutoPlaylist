@@ -8,3 +8,6 @@ __pycache__/
 *.pyc
 *.pyo
 assets/*_cover.jpg
+.env
+suno_state.json
+suno_actions.json

@@ -3,10 +3,13 @@ import { MOODS } from './data/moods';
 import MoodCard from './components/MoodCard';
 import ResultPanel from './components/ResultPanel';
 import AuthWrapper from './components/AuthWrapper';
+import ApiKeySettings from './components/ApiKeySettings';
+import UiCheckProgress from './components/UiCheckProgress';
 import './App.css';
 
 function App() {
   const [selectedMood, setSelectedMood] = useState(null);
+  const [showApiSettings, setShowApiSettings] = useState(false);
 
   const handleSelect = (mood) => {
     setSelectedMood((prev) => (prev?.id === mood.id ? null : mood));
@@ -21,8 +24,13 @@ function App() {
           <p className="app-subtitle">
             무드를 선택하면 Suno 프롬프트, AI 이미지 프롬프트, 유튜브 메타데이터를 자동 생성합니다.
           </p>
+          <button className="api-key-btn" onClick={() => setShowApiSettings(true)}>
+            ⚙️ API 키 설정
+          </button>
         </div>
       </header>
+      {showApiSettings && <ApiKeySettings onClose={() => setShowApiSettings(false)} />}
+      <UiCheckProgress />
 
       <main className="app-main">
         <section className="mood-section">

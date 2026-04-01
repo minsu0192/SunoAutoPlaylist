@@ -7,8 +7,12 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // ── 공통 fetch 래퍼 ──────────────────────────────────────────
 async function apiFetch(path, options = {}) {
+  const apiKey = localStorage.getItem('anthropic_api_key') || '';
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'X-Anthropic-Api-Key': apiKey } : {}),
+    },
     ...options,
   });
   const data = await res.json();
@@ -62,6 +66,18 @@ export function getJob(jobId) {
 
 export function listSongs() {
   return apiFetch('/songs');
+}
+
+// ── UI 변경 감지 ─────────────────────────────────────────────
+export function startUiCheck({ force = false } = {}) {
+  return apiFetch('/ui-check', {
+    method: 'POST',
+    body: JSON.stringify({ force }),
+  });
+}
+
+export function getUiState() {
+  return apiFetch('/ui-state');
 }
 
 // ── 폴링 헬퍼 ────────────────────────────────────────────────

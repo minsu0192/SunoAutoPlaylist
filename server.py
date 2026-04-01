@@ -110,6 +110,21 @@ async def list_tools() -> list[Tool]:
                 "required": ["title", "prompt"],
             },
         ),
+        Tool(
+            name="check_ui_changes",
+            description="수노 UI 변경사항을 감지하고 마우스 좌표를 자동 업데이트합니다.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "force": {"type": "boolean", "description": "캐시 무시하고 강제 재검사 (기본값: false)", "default": False},
+                },
+            },
+        ),
+        Tool(
+            name="get_ui_status",
+            description="마지막 UI 확인 시각과 감지 통계를 반환합니다.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
     ]
 
 # ──────────────────────────────────────────
@@ -196,6 +211,50 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         results["uploads"] = upload_results
 
         return [TextContent(type="text", text=json.dumps(results, ensure_ascii=False, indent=2))]
+
+    elif name == "check_ui_changes":
+        from suno_ui_checker import SunoUIChecker, STATE_FILE
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        force = arguments.get("force", False)
+        if force and STATE_FILE.exists():
+            STATE_FILE.unlink()
+        log = []
+        def on_progress(step, total, message, eta):
+            log.append(f"[{int(step/total*100)}%] {message}")
+        checker = SunoUIChecker(api_key=api_key)
+        loop = asyncio.get_event_loop()
+        report = await loop.run_in_executor(None, lambda: checker.run_check(progress_callback=on_progress))
+        result = {
+            "changed": report.changed,
+            "changed_rois": report.changed_rois,
+            "coords_updated": report.coords_updated,
+            "tokens_used": report.tokens_used,
+            "duration_sec": round(report.duration_sec, 2),
+            "message": report.message,
+            "log": log,
+        }
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
+
+    elif name == "get_ui_status":
+        from suno_ui_checker import STATE_FILE, ACTIONS_FILE
+        state, actions = {}, {}
+        if STATE_FILE.exists():
+            try:
+                state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        if ACTIONS_FILE.exists():
+            try:
+                actions = json.loads(ACTIONS_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        result = {
+            "last_checked": state.get("last_checked"),
+            "check_stats": state.get("check_stats"),
+            "has_coords": bool(actions),
+            "coord_keys": list(actions.keys()),
+        }
+        return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
     return [TextContent(type="text", text=f"알 수 없는 툴: {name}")]
 
