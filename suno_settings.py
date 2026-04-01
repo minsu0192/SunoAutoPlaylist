@@ -89,8 +89,11 @@ class SettingsWindow:
         ttk.Label(frame, text="Anthropic API 키", font=("", 11, "bold")).grid(
             row=row, column=0, columnspan=2, sticky="w", **lpad); row += 1
         self.var_api_key = tk.StringVar(value=self.cfg["anthropic_api_key"])
-        e = ttk.Entry(frame, textvariable=self.var_api_key, width=46, show="*")
-        e.grid(row=row, column=0, columnspan=2, sticky="ew", **pad); row += 1
+        api_frame = ttk.Frame(frame)
+        api_frame.grid(row=row, column=0, columnspan=2, sticky="ew", **pad); row += 1
+        self._api_entry = ttk.Entry(api_frame, textvariable=self.var_api_key, width=36, show="*")
+        self._api_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(api_frame, text="📋 붙여넣기", command=self._paste_api_key).pack(side="left", padx=(4, 0))
 
         # --- 프로젝트 폴더 ---
         ttk.Label(frame, text="프로젝트 폴더", font=("", 11, "bold")).grid(
@@ -161,6 +164,13 @@ class SettingsWindow:
         ttk.Button(bf, text="저장", command=self._save).pack(side="right")
 
         frame.columnconfigure(1, weight=1)
+
+    def _paste_api_key(self):
+        try:
+            text = self.root.clipboard_get()
+            self.var_api_key.set(text.strip())
+        except Exception:
+            messagebox.showerror("오류", "클립보드가 비어 있거나 접근할 수 없습니다.")
 
     def _browse_folder(self):
         d = filedialog.askdirectory(title="프로젝트 폴더 선택",
