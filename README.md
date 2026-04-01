@@ -139,21 +139,37 @@ source ~/.zshrc
 
 ---
 
-## 5. 수노 로그인 세션 저장
+## 5. 수노 로그인 확인
 
-수노 자동화를 처음 실행하기 전에, 로그인 세션을 저장해야 합니다.
+> ✅ **별도 로그인 자동화가 없습니다** — 이게 이 방식의 핵심입니다.
 
-```bash
-source .venv/bin/activate
-python suno_login.py
+이전에 문제가 됐던 "자동 로그인" (Playwright가 Chrome을 열어서 로그인 시도)은
+**완전히 제거됐습니다.** Cloudflare 차단, Google OAuth 거부, SMS 인증 미도착 등의
+문제가 모두 여기서 비롯됐었습니다.
+
+### 현재 방식 (pyautogui)
+
+```
+사용자가 직접 Chrome을 열고 → 직접 로그인 → suno.com/create 이동
+    ↓
+suno_runner.py 실행 → "준비 완료 후 Enter" 대기
+    ↓
+Enter 누르면 pyautogui가 마우스만 대신 움직임
 ```
 
-1. Chrome 브라우저가 열립니다.
-2. `suno.com` 에서 **직접 로그인**하세요 (전화번호, Google 등 어떤 방법이든 가능).
-3. 로그인 완료 후 터미널로 돌아와서 **Enter**를 누릅니다.
-4. `suno_session.json` 파일이 생성됩니다 (이후 자동 로그인에 사용).
+Suno 입장에서는 **사람이 마우스를 움직이는 것과 구분할 수 없습니다.**
+브라우저를 건드리지 않으므로 차단 없음.
 
-> ℹ️ `suno_session.json`은 `.gitignore`에 등록되어 있어 GitHub에 올라가지 않습니다.
+### 로그인 방법
+
+1. **평소처럼 Chrome을 엽니다.**
+2. **[suno.com](https://suno.com) 에 직접 로그인합니다.**
+   - 전화번호, Google, Discord 등 어떤 방법이든 가능
+   - 한 번 로그인하면 Chrome 세션이 유지되므로 매번 할 필요 없음
+3. **[suno.com/create](https://suno.com/create) 로 이동합니다.**
+4. `suno_runner.py` 를 실행하면 Enter를 기다립니다.
+
+> Chrome이 이미 Suno에 로그인된 상태라면 2~3번은 건너뛰어도 됩니다.
 
 ---
 
@@ -428,17 +444,23 @@ python suno_ui_checker.py --force
 ## 전체 실행 순서 요약
 
 ```
-# ① 처음 한 번만
-git clone ... && cd SunoAutoPlaylist
+# ① 처음 한 번만 (환경 세팅)
+git clone https://github.com/minsu0192/SunoAutoPlaylist.git
+cd SunoAutoPlaylist
 git checkout claude/suno-playlist-maker-jixsq
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env
-python suno_login.py          # 수노 로그인
-python suno_learn.py          # UI 좌표 학습
 
-# ② 매번 실행
+# ② 처음 한 번만 (UI 좌표 학습)
+# → 먼저 Chrome에서 suno.com/create 열고 Advanced 탭 클릭 후 실행
+source .venv/bin/activate
+export $(cat .env | xargs)
+python suno_learn.py
+
+# ③ 매번 실행
+# → Chrome에서 suno.com/create 열고 로그인 확인 후 실행
 source .venv/bin/activate
 export $(cat .env | xargs)
 python suno_runner.py --title "제목" --prompt "가사" --style "스타일" --select longest
