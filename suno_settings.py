@@ -57,6 +57,12 @@ class SettingsWindow:
         sh = self.root.winfo_screenheight()
         self.root.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
+        # macOS Cmd+V / Cmd+C / Cmd+A / Cmd+X 지원
+        self.root.bind_class("Entry", "<Command-v>", lambda e: e.widget.event_generate("<<Paste>>"))
+        self.root.bind_class("Entry", "<Command-c>", lambda e: e.widget.event_generate("<<Copy>>"))
+        self.root.bind_class("Entry", "<Command-x>", lambda e: e.widget.event_generate("<<Cut>>"))
+        self.root.bind_class("Entry", "<Command-a>", lambda e: e.widget.select_range(0, "end"))
+
         self._build_ui()
 
     def _build_ui(self):
