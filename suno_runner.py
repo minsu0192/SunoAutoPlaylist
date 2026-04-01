@@ -200,6 +200,45 @@ def click_download_mp3(menu_coords: dict, song_idx: int):
 
 
 # ---------------------------------------------------------------------------
+# 곡 선택 (다운로드 후 적용)
+# ---------------------------------------------------------------------------
+def select_song(moved: list[Path], mode: str) -> list[Path]:
+    """
+    mode:
+      manual  — 2곡 모두 보존, 사용자가 나중에 직접 선택
+      random  — 1곡 랜덤 보존, 나머지 삭제
+      longest — 파일 크기가 큰 쪽 보존 (같은 품질이면 크기 ≈ 길이)
+    반환: 최종 보존된 파일 리스트
+    """
+    if len(moved) <= 1 or mode == "manual":
+        return moved
+
+    if mode == "random":
+        import random
+        kept = random.choice(moved)
+        for f in moved:
+            if f != kept:
+                f.unlink(missing_ok=True)
+                print(f"  🗑️  삭제 (랜덤 미선택): {f.name}")
+        print(f"  🎲 랜덤 선택: {kept.name}")
+        return [kept]
+
+    if mode == "longest":
+        sizes = {f: f.stat().st_size for f in moved}
+        kept = max(sizes, key=sizes.get)
+        for f in moved:
+            if f != kept:
+                f.unlink(missing_ok=True)
+                size_mb = sizes[f] / 1024 / 1024
+                print(f"  🗑️  삭제 (짧은 곡 {size_mb:.1f}MB): {f.name}")
+        size_mb = sizes[kept] / 1024 / 1024
+        print(f"  📏 긴 곡 선택 ({size_mb:.1f}MB): {kept.name}")
+        return [kept]
+
+    return moved
+
+
+# ---------------------------------------------------------------------------
 # 다운로드 파일 이동
 # ---------------------------------------------------------------------------
 def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path]:
@@ -242,9 +281,10 @@ def move_downloads_to_raw_data(title: str, expected_count: int = 2) -> list[Path
 # ---------------------------------------------------------------------------
 # 메인 실행 플로우
 # ---------------------------------------------------------------------------
-def run(title: str, prompt: str, style: str, api_key: str = ""):
+def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "manual"):
     actions = load_actions()
 
+    SELECT_LABELS = {"manual": "수동 선택 (2곡 모두 보존)", "random": "랜덤 1곡", "longest": "긴 곡 자동 선택"}
     print()
     print("=" * 55)
     print("수노 자동 실행 시작")
@@ -252,6 +292,7 @@ def run(title: str, prompt: str, style: str, api_key: str = ""):
     print(f"제목  : {title}")
     print(f"스타일: {style}")
     print(f"가사  : {prompt[:60]}{'...' if len(prompt) > 60 else ''}")
+    print(f"선택  : {SELECT_LABELS.get(select, select)}")
     print()
     print("⚠️  마우스를 화면 왼쪽 상단으로 이동하면 즉시 중단됩니다.")
     print()
@@ -299,12 +340,18 @@ def run(title: str, prompt: str, style: str, api_key: str = ""):
     # [7/9] 생성 대기
     wait_for_generation(wait_sec=100)
 
-    # [8/9] 다운로드
-    print("\n[8/9] 생성된 곡 MP3 다운로드...")
+    # [8/9] 다운로드 (select 모드에 따라 1곡 or 2곡)
+    dl_count = 1 if select in ("random", "longest") else 2
+    print(f"\n[8/9] 생성된 곡 MP3 다운로드 ({dl_count}곡)...")
     if api_key and ANTHROPIC_AVAILABLE:
         print("  Claude Haiku로 다운로드 버튼 위치 탐지 중...")
         song_btns = find_song_menu_buttons(api_key)
         if song_btns:
+            # random 모드: 1곡만 다운로드 (랜덤 선택)
+            if select == "random":
+                import random as _random
+                song_btns = [_random.choice(song_btns)]
+            # longest 모드: 2곡 모두 다운로드 후 나중에 크기 비교
             for i, btn in enumerate(song_btns, 1):
                 print(f"\n  곡 {i}/{len(song_btns)} 다운로드...")
                 click_download_mp3(btn, i)
@@ -314,26 +361,32 @@ def run(title: str, prompt: str, style: str, api_key: str = ""):
             print("      수노 페이지에서 직접 각 곡의 ⋮ → Download → MP3 Audio를 클릭하세요.")
     else:
         print("  ℹ️  ANTHROPIC_API_KEY 없음 — 수동 다운로드 필요")
-        print("      수노 페이지에서 각 곡의 ⋮ → Download → MP3 Audio를 클릭하세요.")
+        if select == "random":
+            print("      수노 페이지에서 곡 1개의 ⋮ → Download → MP3 Audio를 클릭하세요.")
+        else:
+            print("      수노 페이지에서 각 곡의 ⋮ → Download → MP3 Audio를 클릭하세요.")
         input("  다운로드 완료 후 Enter ▶ ")
 
-    # [9/9] 파일 이동
-    print("\n[9/9] 다운로드 파일을 raw_data/ 폴더로 이동...")
-    moved = move_downloads_to_raw_data(title, expected_count=2)
+    # [9/9] 파일 이동 + 곡 선택
+    print("\n[9/9] 다운로드 파일 이동 및 최종 선택...")
+    moved = move_downloads_to_raw_data(title, expected_count=dl_count)
+    final = select_song(moved, mode=select)
 
     print()
     print("=" * 55)
-    if moved:
-        print(f"✅ 완료! {len(moved)}곡 저장됨:")
-        for f in moved:
+    if final:
+        print(f"✅ 완료! {len(final)}곡 저장됨:")
+        for f in final:
             print(f"   📁 {f}")
+        if select == "manual" and len(final) == 2:
+            print()
+            print("  💡 2곡 중 더 좋은 곡을 직접 들어보고 선택하세요.")
+            print("     (발음, 길이, 분위기 등을 기준으로 비교)")
     else:
         print("✅ 생성 요청 완료! (파일 이동은 수동으로 확인하세요)")
         print(f"   저장 위치: {RAW_DATA_DIR}/")
     print()
-    print("다음 단계:")
-    print("  - raw_data/ 폴더에서 더 좋은 곡을 선택하세요 (2곡 중 1곡)")
-    print("  - 선택한 곡을 이용해 YouTube 업로드를 진행하세요")
+    print("다음 단계: 선택한 곡으로 YouTube 업로드를 진행하세요")
     print("=" * 55)
 
 
@@ -368,6 +421,14 @@ def main():
     parser.add_argument("--title",         help="곡 제목")
     parser.add_argument("--prompt",        help="가사/프롬프트")
     parser.add_argument("--style",         help="음악 스타일")
+    parser.add_argument("--select",        choices=["manual", "random", "longest"],
+                        default="manual",
+                        help=(
+                            "곡 선택 방식: "
+                            "manual=2곡 모두 보존 후 직접 선택(기본값), "
+                            "random=1곡 랜덤 선택, "
+                            "longest=파일 크기가 큰 곡(긴 곡) 자동 선택"
+                        ))
     parser.add_argument("--skip-ui-check", action="store_true", help="시작 시 UI 변경 감지 건너뜀")
     args = parser.parse_args()
 
@@ -380,7 +441,7 @@ def main():
     prompt = args.prompt or input("가사/프롬프트: ").strip()
     style  = args.style  or input("스타일 (예: lofi hip hop, chill K-pop): ").strip()
 
-    run(title, prompt, style, api_key=api_key)
+    run(title, prompt, style, api_key=api_key, select=args.select)
 
 
 if __name__ == "__main__":
