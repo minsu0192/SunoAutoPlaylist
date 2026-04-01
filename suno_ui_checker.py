@@ -32,11 +32,12 @@ STATE_FILE = Path("suno_state.json")
 ACTIONS_FILE = Path("suno_actions.json")
 
 # ROI 정의 (화면 비율 기반 — 해상도 독립)
+# 실제 수노 UI: 상단 탭(10s/Simple/Advanced/Sounds) → Lyrics → Styles → 스크롤 → Title → Create
 ROI_DEFINITIONS = {
-    "custom_toggle": {"x": 0.0, "y": 0.05, "w": 0.45, "h": 0.20},
-    "lyrics_input":  {"x": 0.0, "y": 0.20, "w": 0.45, "h": 0.40},
-    "style_title":   {"x": 0.0, "y": 0.55, "w": 0.45, "h": 0.25},
-    "submit_button": {"x": 0.0, "y": 0.78, "w": 0.45, "h": 0.18},
+    "advanced_tab":  {"x": 0.10, "y": 0.00, "w": 0.35, "h": 0.08},  # 상단 탭 행
+    "lyrics_input":  {"x": 0.0,  "y": 0.08, "w": 0.42, "h": 0.38},  # Lyrics 입력
+    "style_title":   {"x": 0.0,  "y": 0.45, "w": 0.42, "h": 0.30},  # Styles + 스크롤 영역
+    "submit_button": {"x": 0.0,  "y": 0.80, "w": 0.42, "h": 0.18},  # Create 버튼 (스크롤 후)
 }
 
 
@@ -162,10 +163,10 @@ class ClaudeUIAnalyzer:
                 "반환 형식 (다른 텍스트 없이 JSON만):\n"
                 '{"roi_name": {"x": 절대픽셀X, "y": 절대픽셀Y}, ...}\n'
                 "찾을 요소:\n"
-                "- custom_toggle: Custom Mode 토글 버튼\n"
-                "- lyrics_input: 가사 입력 textarea\n"
-                "- style_title: 스타일 입력 필드 + 제목 필드 중심\n"
-                "- submit_button: 노래 생성(Create/Generate) 버튼\n"
+                "- advanced_tab: 상단 탭 중 'Advanced' 탭 버튼 (10s/Simple/Advanced/Sounds 중 하나)\n"
+                "- lyrics_input: 가사(Lyrics) 입력 textarea\n"
+                "- style_title: Styles 입력 필드 또는 Song Title 입력 필드\n"
+                "- submit_button: Create(생성) 버튼 — 패널 하단에 위치\n"
                 "없는 요소는 제외하고 찾은 것만 반환."
             ),
         })

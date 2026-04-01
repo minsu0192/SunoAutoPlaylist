@@ -19,49 +19,56 @@ from PIL import Image
 
 ACTIONS_FILE = Path(__file__).parent / "suno_actions.json"
 
+# 실제 수노 UI 플로우 (스크린샷 기반):
+#   Advanced 탭 클릭 → Lyrics 입력 → Styles 입력 → 스크롤 → Song Title 입력 → Create 클릭
 STEPS = [
     {
-        "key": "custom_mode_toggle",
-        "instruction": "Custom Mode 또는 Custom 토글 버튼",
+        "key": "advanced_tab",
+        "instruction": "상단 탭 중 'Advanced' 탭 버튼 (10s / Simple / Advanced / Sounds)",
         "prompt_for_claude": (
-            "이 화면은 Suno 음악 생성 페이지입니다. "
-            "'Custom' 또는 'Custom Mode' 토글 버튼의 중심 좌표를 찾아주세요. "
+            "이 화면은 Suno 음악 생성 페이지(suno.com/create)입니다. "
+            "화면 왼쪽 패널 상단에 '10s', 'Simple', 'Advanced', 'Sounds' 탭이 나열되어 있습니다. "
+            "그 중 'Advanced' 탭 버튼의 중심 좌표를 찾아주세요. "
             "반드시 JSON 형식으로만 응답하세요: {\"x\": 숫자, \"y\": 숫자}"
         ),
     },
     {
         "key": "lyrics_textarea",
-        "instruction": "가사/프롬프트 입력창 (Lyrics 또는 큰 텍스트 입력란)",
+        "instruction": "Lyrics 입력창 (가사를 입력하는 가장 큰 텍스트 입력란)",
         "prompt_for_claude": (
-            "이 화면은 Suno Custom 모드 음악 생성 페이지입니다. "
-            "가사(Lyrics) 또는 프롬프트를 입력하는 가장 큰 텍스트 입력란의 중심 좌표를 찾아주세요. "
+            "이 화면은 Suno Advanced 모드 음악 생성 페이지입니다. "
+            "'Lyrics' 라고 표시된 가사 입력 textarea의 중심 좌표를 찾아주세요. "
+            "왼쪽 패널에서 가장 큰 텍스트 입력 영역입니다. "
             "반드시 JSON 형식으로만 응답하세요: {\"x\": 숫자, \"y\": 숫자}"
         ),
     },
     {
         "key": "style_input",
-        "instruction": "스타일 입력창 (Style of Music)",
+        "instruction": "Styles 입력창 (음악 스타일을 입력하는 필드)",
         "prompt_for_claude": (
-            "이 화면은 Suno Custom 모드 음악 생성 페이지입니다. "
-            "'Style of Music' 또는 'Style' 입력란의 중심 좌표를 찾아주세요. "
+            "이 화면은 Suno Advanced 모드 음악 생성 페이지입니다. "
+            "'Styles' 또는 'Style of Music' 라고 표시된 스타일 입력 필드의 중심 좌표를 찾아주세요. "
+            "Lyrics 입력란 아래에 위치합니다. "
             "반드시 JSON 형식으로만 응답하세요: {\"x\": 숫자, \"y\": 숫자}"
         ),
     },
     {
         "key": "title_input",
-        "instruction": "제목 입력창 (Title)",
+        "instruction": "Song Title 입력창 (스크롤 후 보이는 제목 입력 필드)",
         "prompt_for_claude": (
-            "이 화면은 Suno Custom 모드 음악 생성 페이지입니다. "
-            "'Title' 입력란의 중심 좌표를 찾아주세요. "
+            "이 화면은 Suno Advanced 모드 음악 생성 페이지입니다. "
+            "패널을 아래로 스크롤하면 'Song Title (Optional)' 또는 'Title' 입력란이 보입니다. "
+            "해당 제목 입력 필드의 중심 좌표를 찾아주세요. "
             "반드시 JSON 형식으로만 응답하세요: {\"x\": 숫자, \"y\": 숫자}"
         ),
     },
     {
         "key": "create_button",
-        "instruction": "Create / Generate 버튼",
+        "instruction": "Create 버튼 (패널 맨 아래, 스크롤 후 보임)",
         "prompt_for_claude": (
-            "이 화면은 Suno Custom 모드 음악 생성 페이지입니다. "
-            "'Create' 또는 'Generate' 버튼의 중심 좌표를 찾아주세요. "
+            "이 화면은 Suno Advanced 모드 음악 생성 페이지입니다. "
+            "패널 하단에 있는 'Create' 버튼의 중심 좌표를 찾아주세요. "
+            "음표 아이콘과 함께 'Create'라고 표시된 버튼입니다. "
             "반드시 JSON 형식으로만 응답하세요: {\"x\": 숫자, \"y\": 숫자}"
         ),
     },
@@ -153,15 +160,32 @@ def main(force: bool = False):
     print("수노 UI 자동 학습")
     print("=" * 55)
     print()
+    print("준비 방법:")
     print("1. 크롬에서 https://suno.com/create 를 열어주세요")
-    print("2. Custom Mode를 켜서 입력폼이 다 보이게 해주세요")
-    print("3. 준비되면 여기서 Enter를 누르세요")
+    print("2. 상단 탭에서 'Advanced'를 클릭하세요")
+    print("   (10s / Simple / Advanced / Sounds 탭 중 'Advanced')")
+    print("3. Lyrics, Styles 입력폼이 보이는 상태로 유지하세요")
+    print("   (Song Title, Create 버튼은 스크롤하면 나타남 — 그대로 두세요)")
+    print("4. 준비되면 여기서 Enter를 누르세요")
     print()
     input("준비 완료 후 Enter ▶ ")
 
     actions = {}
+    # Song Title과 Create 버튼은 패널 하단 — 학습 전 스크롤 필요
+    SCROLL_BEFORE = {"title_input", "create_button"}
 
     for step in STEPS:
+        if step["key"] in SCROLL_BEFORE:
+            print(f"\n  ↕️  패널을 아래로 스크롤합니다 (Song Title / Create 버튼 노출)...")
+            # 왼쪽 패널 중앙 근처에서 스크롤
+            if "style_input" in actions:
+                sx, sy = int(actions["style_input"]["x"]), int(actions["style_input"]["y"]) + 60
+            else:
+                sx, sy = 250, 500
+            pyautogui.moveTo(sx, sy, duration=0.3)
+            pyautogui.scroll(-5)
+            time.sleep(1.0)
+
         print(f"\n[{step['key']}] {step['instruction']} 찾는 중...")
         screenshot_b64 = take_screenshot_b64()
 

@@ -11,3 +11,4 @@ assets/*_cover.jpg
 .env
 suno_state.json
 suno_actions.json
+raw_data/
