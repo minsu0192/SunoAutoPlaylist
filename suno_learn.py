@@ -115,9 +115,8 @@ def ask_claude(client: anthropic.Anthropic, screenshot_b64: str, question: str) 
 
 
 def manual_click(step_name: str) -> dict:
-    print(f"  → 자동 감지 실패. 직접 '{step_name}'을 클릭해주세요.")
-    print(f"     3초 후 마우스 위치를 기록합니다...")
-    time.sleep(3)
+    print(f"  → 직접 '{step_name}' 위로 마우스를 올리고 Enter를 누르세요.")
+    input("     마우스 위치 기록 ▶ ")
     x, y = pyautogui.position()
     print(f"  → 기록됨: ({x}, {y})")
     return {"x": x, "y": y}
@@ -146,7 +145,7 @@ def run_startup_ui_check(api_key: str) -> bool:
         return False
 
 
-def main(force: bool = False):
+def main(force: bool = False, manual: bool = False):
     # 설정 파일에서도 API 키 읽기
     _cfg_file = Path.home() / ".suno_config.json"
     _cfg_key = ""
@@ -158,15 +157,16 @@ def main(force: bool = False):
             pass
     api_key = os.environ.get("ANTHROPIC_API_KEY") or _cfg_key or input("Anthropic API 키를 입력하세요: ").strip()
 
-    # UI 변경 감지: 변경 없으면 재학습 건너뜀 (force=True면 항상 재학습)
-    if not force and run_startup_ui_check(api_key):
-        print("학습 데이터가 최신 상태입니다. 재학습이 필요하면 --force 옵션을 사용하세요.")
-        return
+    if not manual:
+        # UI 변경 감지: 변경 없으면 재학습 건너뜀 (force=True면 항상 재학습)
+        if not force and run_startup_ui_check(api_key):
+            print("학습 데이터가 최신 상태입니다. 재학습이 필요하면 --force 옵션을 사용하세요.")
+            return
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = None if manual else anthropic.Anthropic(api_key=api_key)
 
     print("=" * 55)
-    print("수노 UI 자동 학습")
+    print("수노 UI 수동 학습" if manual else "수노 UI 자동 학습")
     print("=" * 55)
     print()
     print("준비 방법:")
@@ -195,20 +195,20 @@ def main(force: bool = False):
             pyautogui.scroll(-5)
             time.sleep(1.0)
 
-        print(f"\n[{step['key']}] {step['instruction']} 찾는 중...")
-        screenshot_b64 = take_screenshot_b64()
-
-        coords = ask_claude(client, screenshot_b64, step["prompt_for_claude"])
-
-        if coords and "x" in coords and "y" in coords:
-            print(f"  ✅ 자동 감지: ({coords['x']}, {coords['y']})")
-            # 시각적 확인
-            pyautogui.moveTo(coords["x"], coords["y"], duration=0.5)
-            confirm = input("  올바른 위치인가요? (y/n): ").strip().lower()
-            if confirm != "y":
-                coords = manual_click(step["instruction"])
-        else:
+        print(f"\n[{step['key']}] {step['instruction']}")
+        if manual:
             coords = manual_click(step["instruction"])
+        else:
+            screenshot_b64 = take_screenshot_b64()
+            coords = ask_claude(client, screenshot_b64, step["prompt_for_claude"])
+            if coords and "x" in coords and "y" in coords:
+                print(f"  ✅ 자동 감지: ({coords['x']}, {coords['y']})")
+                pyautogui.moveTo(coords["x"], coords["y"], duration=0.5)
+                confirm = input("  올바른 위치인가요? (y/n): ").strip().lower()
+                if confirm != "y":
+                    coords = manual_click(step["instruction"])
+            else:
+                coords = manual_click(step["instruction"])
 
         actions[step["key"]] = coords
         time.sleep(0.3)
@@ -226,5 +226,6 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="수노 UI 자동 학습")
     parser.add_argument("--force", action="store_true", help="UI 체크 건너뛰고 강제 재학습")
+    parser.add_argument("--manual", action="store_true", help="Claude 없이 직접 마우스로 좌표 기록")
     args = parser.parse_args()
-    main(force=args.force)
+    main(force=args.force, manual=args.manual)
