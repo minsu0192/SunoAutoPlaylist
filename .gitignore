@@ -1,6 +1,7 @@
 client_secrets.json
 token.json
 suno_session.json
+suno_actions.json
 downloads/
 output/
 .venv/
@@ -8,3 +9,4 @@ __pycache__/
 *.pyc
 *.pyo
 assets/*_cover.jpg
+.env
