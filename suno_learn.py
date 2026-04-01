@@ -147,7 +147,16 @@ def run_startup_ui_check(api_key: str) -> bool:
 
 
 def main(force: bool = False):
-    api_key = os.environ.get("ANTHROPIC_API_KEY") or input("Anthropic API 키를 입력하세요: ").strip()
+    # 설정 파일에서도 API 키 읽기
+    _cfg_file = Path.home() / ".suno_config.json"
+    _cfg_key = ""
+    if _cfg_file.exists():
+        try:
+            import json as _json
+            _cfg_key = _json.loads(_cfg_file.read_text(encoding="utf-8")).get("anthropic_api_key", "")
+        except Exception:
+            pass
+    api_key = os.environ.get("ANTHROPIC_API_KEY") or _cfg_key or input("Anthropic API 키를 입력하세요: ").strip()
 
     # UI 변경 감지: 변경 없으면 재학습 건너뜀 (force=True면 항상 재학습)
     if not force and run_startup_ui_check(api_key):
