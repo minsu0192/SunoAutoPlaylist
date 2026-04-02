@@ -136,7 +136,7 @@ def record_mode():
                 x, y = pyautogui.position()
                 elem = KEY_MAP[k]
                 actions[elem] = {"x": x, "y": y}
-                name = next(s["instruction"] for s in STEPS if s["key"] == elem)
+                name = next((s["instruction"] for s in STEPS if s["key"] == elem), elem)
                 print(f"  ✅ [{k}] {name}: ({x}, {y})")
         except Exception:
             pass

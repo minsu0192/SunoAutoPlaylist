@@ -12,7 +12,7 @@ class PlaylistManager:
     def __init__(self, download_dir: Path):
         self.download_dir = Path(download_dir)
 
-    def create_m3u(self, name: str, songs: list[str] = []) -> dict:
+    def create_m3u(self, name: str, songs: list[str] | None = None) -> dict:
         if not songs:
             mp3_files = sorted(self.download_dir.glob("*.mp3"))
         else:
@@ -20,6 +20,16 @@ class PlaylistManager:
 
         if not mp3_files:
             return {"success": False, "error": "플레이리스트에 추가할 MP3 파일이 없습니다."}
+
+        # 중복 파일 제거 (경로 기준)
+        seen = set()
+        unique_files = []
+        for mp3 in mp3_files:
+            resolved = mp3.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_files.append(mp3)
+        mp3_files = unique_files
 
         playlist_path = self.download_dir / f"{name}.m3u"
         lines = ["#EXTM3U", f"# 생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}"]

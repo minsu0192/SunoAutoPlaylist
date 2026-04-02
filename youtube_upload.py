@@ -68,7 +68,7 @@ class YouTubeUploader:
         video_path: str,
         title: str,
         description: str = "",
-        tags: list[str] = [],
+        tags: list[str] | None = None,
         playlist_id: Optional[str] = None,
         privacy: str = "public",
     ) -> dict:
@@ -91,7 +91,7 @@ class YouTubeUploader:
             "snippet": {
                 "title":           title,
                 "description":     description or f"AI로 생성한 음악입니다.\n\n🎵 {title}",
-                "tags":            tags or ["AI music", "Suno", "K-pop"],
+                "tags":            tags if tags else ["AI music", "Suno", "K-pop"],
                 "categoryId":      CATEGORY_MUSIC,
                 "defaultLanguage": "ko",
             },

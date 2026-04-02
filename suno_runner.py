@@ -19,7 +19,6 @@
 
 import argparse
 import base64
-import glob
 import io
 import json
 import os
@@ -50,12 +49,25 @@ pyautogui.FAILSAFE = True  # 마우스를 왼쪽 상단 모서리로 이동하�
 # ---------------------------------------------------------------------------
 # 기본 헬퍼
 # ---------------------------------------------------------------------------
+REQUIRED_ACTION_KEYS = {"advanced_tab", "lyrics_textarea", "style_input", "create_button"}
+
+
 def load_actions() -> dict:
     if not ACTIONS_FILE.exists():
         print("❌ 학습 데이터가 없습니다.")
         print("   먼저 python3.11 suno_learn.py 를 실행해주세요.")
         sys.exit(1)
-    return json.loads(ACTIONS_FILE.read_text())
+    try:
+        actions = json.loads(ACTIONS_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"❌ 학습 데이터 파일 오류: {e}")
+        sys.exit(1)
+    missing = REQUIRED_ACTION_KEYS - set(actions.keys())
+    if missing:
+        print(f"❌ 학습 데이터 불완전 — 누락된 요소: {', '.join(missing)}")
+        print("   suno_learn.py 를 다시 실행하여 모든 요소를 학습하세요.")
+        sys.exit(1)
+    return actions
 
 
 def click(coords: dict, label: str = ""):

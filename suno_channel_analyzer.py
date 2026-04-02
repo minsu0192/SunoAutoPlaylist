@@ -103,7 +103,9 @@ JSON으로만 응답하세요:
     # ```json ... ``` 처리
     if "```" in raw:
         for part in raw.split("```")[1::2]:
-            part = part.strip().lstrip("json").strip()
+            part = part.strip()
+            if part.startswith("json"):
+                part = part[4:].strip()
             try:
                 result = json.loads(part)
                 print("[채널 분석] 완료!")
@@ -111,7 +113,10 @@ JSON으로만 응답하세요:
             except json.JSONDecodeError:
                 continue
 
-    result = json.loads(raw)
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude 응답을 JSON으로 파싱할 수 없습니다: {e}\n응답: {raw[:200]}")
     print("[채널 분석] 완료!")
     return result
 

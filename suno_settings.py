@@ -236,10 +236,22 @@ class SettingsWindow:
         f = ttk.Frame(tab)
         f.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(2, 4)); row += 1
         self.var_channel_url = tk.StringVar(value=self.cfg["youtube_channel_url"])
-        ttk.Entry(f, textvariable=self.var_channel_url,
-                  font=("Helvetica", 11),
-                  placeholder_text="https://www.youtube.com/@channelname").pack(
-            side="left", fill="x", expand=True)
+        channel_entry = ttk.Entry(f, textvariable=self.var_channel_url,
+                                  font=("Helvetica", 11))
+        channel_entry.pack(side="left", fill="x", expand=True)
+        if not self.var_channel_url.get():
+            channel_entry.insert(0, "https://www.youtube.com/@channelname")
+            channel_entry.configure(foreground="#999")
+            def _on_focus_in(e):
+                if channel_entry.get() == "https://www.youtube.com/@channelname":
+                    channel_entry.delete(0, "end")
+                    channel_entry.configure(foreground="")
+            def _on_focus_out(e):
+                if not channel_entry.get():
+                    channel_entry.insert(0, "https://www.youtube.com/@channelname")
+                    channel_entry.configure(foreground="#999")
+            channel_entry.bind("<FocusIn>", _on_focus_in)
+            channel_entry.bind("<FocusOut>", _on_focus_out)
         self._analyze_btn = ttk.Button(f, text="🔍 채널 분석",
                                        command=self._analyze_channel)
         self._analyze_btn.pack(side="left", padx=(6,0))
@@ -322,10 +334,10 @@ class SettingsWindow:
         ttk.Label(day_f, text="반복 요일:  ", font=("Helvetica", 12)).pack(side="left")
         saved_days = self.cfg.get("schedule_days", [d for d, _ in DAYS_KR])
         self._day_vars = {}
+        self._day_cbs = []
         for key, label in DAYS_KR:
             v = tk.BooleanVar(value=(key in saved_days))
             self._day_vars[key] = v
-            self._day_cbs = getattr(self, "_day_cbs", [])
             cb = ttk.Checkbutton(day_f, text=label, variable=v)
             cb.pack(side="left", padx=3)
             self._day_cbs.append(cb)

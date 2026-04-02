@@ -28,8 +28,8 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
-STATE_FILE = Path("suno_state.json")
-ACTIONS_FILE = Path("suno_actions.json")
+STATE_FILE = Path(__file__).parent / "suno_state.json"
+ACTIONS_FILE = Path(__file__).parent / "suno_actions.json"
 
 # ROI 정의 (화면 비율 기반 — 해상도 독립)
 # 실제 수노 UI: 상단 탭(10s/Simple/Advanced/Sounds) → Lyrics → Styles → 스크롤 → Title → Create
@@ -184,15 +184,25 @@ class ClaudeUIAnalyzer:
         try:
             # 코드블록 제거
             if "```" in raw:
-                raw = raw.split("```")[1]
-                if raw.startswith("json"):
-                    raw = raw[4:]
-            parsed = json.loads(raw.strip())
+                parts = raw.split("```")
+                for part in parts[1::2]:
+                    part = part.strip()
+                    if part.startswith("json"):
+                        part = part[4:].strip()
+                    try:
+                        parsed = json.loads(part)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    parsed = json.loads(raw.strip())
+            else:
+                parsed = json.loads(raw.strip())
             for roi_name, pos in parsed.items():
                 if isinstance(pos, dict) and "x" in pos and "y" in pos:
                     coords[roi_name] = {"x": int(pos["x"]), "y": int(pos["y"])}
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[UIChecker] JSON 파싱 실패: {e}")
 
         return coords, tokens
 

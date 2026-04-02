@@ -101,13 +101,18 @@ JSON 형식으로만 응답하세요 (다른 텍스트 없이):
     # ```json ... ``` 블록 처리
     if "```" in raw:
         for part in raw.split("```")[1::2]:
-            part = part.strip().lstrip("json").strip()
+            part = part.strip()
+            if part.startswith("json"):
+                part = part[4:].strip()
             try:
                 return json.loads(part)
             except json.JSONDecodeError:
                 continue
 
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude 응답을 JSON으로 파싱할 수 없습니다: {e}\n응답: {raw[:200]}")
 
 
 def _fallback_content(keyword: str, base_style: str, vocal: str) -> dict:

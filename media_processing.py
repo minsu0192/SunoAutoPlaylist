@@ -63,13 +63,18 @@ class MediaProcessor:
     async def _create_default_cover(self, title: str) -> Path:
         assets_dir = Path(__file__).parent / "assets"
         assets_dir.mkdir(exist_ok=True)
-        cover_path = assets_dir / f"{title}_cover.jpg"
+        # 파일명에 사용 불가 문자 제거
+        import re
+        safe_filename = re.sub(r'[\\/:*?"<>|]', "_", title)[:60]
+        cover_path = assets_dir / f"{safe_filename}_cover.jpg"
 
+        # FFmpeg drawtext 필터에서 특수문자 이스케이프
+        safe_title = title.replace("\\", "\\\\").replace("'", "\u2019").replace(":", "\\:")
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi",
             "-i", "color=c=black:s=1920x1080:r=1",
-            "-vf", f"drawtext=text='{title}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",
+            "-vf", f"drawtext=text='{safe_title}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=(h-text_h)/2",
             "-frames:v", "1",
             str(cover_path),
         ]

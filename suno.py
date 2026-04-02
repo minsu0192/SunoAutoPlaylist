@@ -70,17 +70,20 @@ class SunoAutomation:
             await custom_toggle.first.click()
             await asyncio.sleep(0.5)
 
-        prompt_area = page.locator("textarea[placeholder*='lyric'], textarea[placeholder*='prompt'], textarea").first
-        await prompt_area.fill(prompt)
+        prompt_area = page.locator("textarea[placeholder*='lyric'], textarea[placeholder*='prompt'], textarea")
+        if await prompt_area.count() > 0:
+            await prompt_area.first.fill(prompt)
+        else:
+            raise Exception("가사 입력 textarea를 찾을 수 없습니다.")
 
         if style:
-            style_input = page.locator("input[placeholder*='style'], input[placeholder*='Style']").first
+            style_input = page.locator("input[placeholder*='style'], input[placeholder*='Style']")
             if await style_input.count() > 0:
-                await style_input.fill(style)
+                await style_input.first.fill(style)
 
-        title_input = page.locator("input[placeholder*='title'], input[placeholder*='Title']").first
+        title_input = page.locator("input[placeholder*='title'], input[placeholder*='Title']")
         if await title_input.count() > 0:
-            await title_input.fill(title)
+            await title_input.first.fill(title)
 
         await page.click("button:has-text('Create'), button[type='submit']:has-text('Generate')")
         print(f"[수노] '{title}' 생성 시작... (2~3분 소요)")

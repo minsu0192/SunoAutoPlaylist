@@ -189,6 +189,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         )
         results["generation"] = gen_result
 
+        if not gen_result.get("success"):
+            return [TextContent(type="text", text=json.dumps(results, ensure_ascii=False, indent=2))]
+
         # 2. MP4 변환
         processor = MediaProcessor(download_dir=DOWNLOAD_DIR, output_dir=OUTPUT_DIR)
         mp4_results = []
