@@ -66,6 +66,37 @@ def _osascript(script: str) -> str:
     return r.stdout.strip()
 
 
+def _find_python() -> str:
+    """실행 가능한 Python 인터프리터 경로 반환."""
+    # 가상환경 우선
+    venv_py = SCRIPT_DIR / ".venv" / "bin" / "python"
+    if venv_py.exists():
+        return str(venv_py)
+    for candidate in ["python3.11", "python3", "python"]:
+        r = subprocess.run(["which", candidate], capture_output=True, text=True)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    return sys.executable
+
+
+def _open_python_script(script_path: str, extra_args: list = None):
+    """tkinter 설정 창처럼 GUI 스크립트를 올바른 Python으로 실행."""
+    python = _find_python()
+    cmd = [python, script_path] + (extra_args or [])
+    subprocess.Popen(cmd, env={**os.environ})
+
+
+def _open_terminal_command(cmd: str):
+    """macOS Terminal을 열고 주어진 명령어를 실행."""
+    apple_script = f'''
+    tell application "Terminal"
+        activate
+        do script "{cmd}"
+    end tell
+    '''
+    subprocess.Popen(["osascript", "-e", apple_script])
+
+
 # ---------------------------------------------------------------------------
 # 메인 앱
 # ---------------------------------------------------------------------------
@@ -258,42 +289,36 @@ class SunoMenuBar(rumps.App):
 
     @rumps.clicked("📋 로그 보기")
     def show_log(self, _):
-        tail = _read_log_tail(50)
-        # AppleScript 특수문자 이스케이프
-        escaped = (tail.replace("\\", "\\\\")
-                       .replace('"', '\\"')
-                       .replace("\n", "\\n"))
-        result = _osascript(
-            f'button returned of (display dialog "{escaped}" '
-            f'with title "수노 자동화 — 최근 로그" '
-            f'buttons {{"로그 파일 열기", "닫기"}} default button "닫기")'
-        )
-        if result == "로그 파일 열기" and LOG_FILE.exists():
+        if LOG_FILE.exists():
+            # 로그 파일을 TextEdit/콘솔로 바로 열기
             subprocess.Popen(["open", str(LOG_FILE)])
+        else:
+            _osascript(
+                'display dialog "아직 로그가 없습니다." '
+                'with title "수노 자동화 — 로그" '
+                'buttons {"닫기"} default button "닫기"'
+            )
 
     @rumps.clicked("❓ 사용 방법")
     def show_help(self, _):
-        subprocess.Popen([sys.executable,
-                          str(SCRIPT_DIR / "suno_settings.py"), "--help-tab"])
+        _open_python_script(str(SCRIPT_DIR / "suno_settings.py"), ["--help-tab"])
 
     @rumps.clicked("🔄 UI 재학습")
     def relearn(self, _):
-        config = load_config()
-        api_key = config.get("anthropic_api_key", "") or os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            rumps.notification("⚙️ API 키 없음", "", "설정(⚙️)에서 API 키를 먼저 입력하세요.")
-            return
-        env = {**os.environ, "ANTHROPIC_API_KEY": api_key}
-        log_fd = LOG_FILE.open("a", encoding="utf-8")
-        subprocess.Popen(
-            [sys.executable, str(SCRIPT_DIR / "suno_learn.py"), "--force"],
-            stdout=log_fd, stderr=log_fd, env=env,
+        # 터미널을 열어서 사용자가 직접 상호작용할 수 있게 함
+        script_path = str(SCRIPT_DIR / "suno_learn.py")
+        _open_terminal_command(
+            f"cd '{SCRIPT_DIR}' && python3 '{script_path}' --manual"
         )
-        rumps.notification("🔄 UI 재학습", "시작됨", "📋 로그 보기에서 진행 상황을 확인하세요.")
+        rumps.notification(
+            "🔄 UI 재학습",
+            "터미널이 열립니다",
+            "터미널 안내에 따라 각 요소 위로 마우스를 올리고 Enter를 누르세요."
+        )
 
     @rumps.clicked("⚙️ 설정...")
     def open_settings(self, _):
-        subprocess.Popen([sys.executable, str(SCRIPT_DIR / "suno_settings.py")])
+        _open_python_script(str(SCRIPT_DIR / "suno_settings.py"))
 
     # ------------------------------------------------------------------
     # 첫 실행 체크
