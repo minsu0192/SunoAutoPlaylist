@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -281,11 +282,10 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
     print()
     print("⚠️  마우스를 화면 왼쪽 상단으로 이동하면 즉시 중단됩니다.")
     print()
-    if interactive:
-        print("준비:")
-        print("  1. 크롬에서 https://suno.com/create 를 여세요")
-        print("  2. 로그인 상태를 확인하세요")
-        input("  3. 준비 완료 후 Enter ▶ ")
+    # Chrome 자동 실행
+    print("  Chrome에서 suno.com/create 여는 중...")
+    subprocess.Popen(["open", "-a", "Google Chrome", "https://suno.com/create"])
+    time.sleep(4)  # 페이지 로딩 대기
 
     time.sleep(1)
 
