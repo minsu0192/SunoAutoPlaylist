@@ -99,44 +99,55 @@ def wait_for_generation(wait_sec: int = 100):
 # ---------------------------------------------------------------------------
 
 def snapshot_downloads() -> set:
-    """현재 ~/Downloads 의 MP3 파일 목록을 스냅샷으로 반환."""
+    """현재 ~/Downloads 의 MP3 파일 집합을 반환."""
     d = Path.home() / "Downloads"
-    if not d.exists():
-        return set()
-    return set(d.glob("*.mp3"))
+    return set(d.glob("*.mp3")) if d.exists() else set()
 
 
-def wait_for_new_mp3(before: set, timeout: int = 90) -> list[Path]:
+def wait_for_downloads_complete(before: set, expected: int,
+                                timeout: int = 180) -> list[Path]:
     """
-    before 스냅샷 이후 ~/Downloads 에 새로 생긴 MP3 파일이 나타날 때까지 대기.
-    완전히 다운로드된 파일(크기 변화 없음)만 반환.
+    모든 다운로드 클릭 완료 후 호출.
+    새 MP3가 expected 개수만큼 안정화(크기 변화 없음)될 때까지 대기.
     """
     d = Path.home() / "Downloads"
-    print(f"  ⏳ ~/Downloads 에서 MP3 다운로드 대기 중... (최대 {timeout}초)")
-
+    print(f"  ⏳ 다운로드 완료 대기 중... ({expected}개, 최대 {timeout}초)")
     deadline = time.time() + timeout
-    while time.time() < deadline:
-        after = set(d.glob("*.mp3"))
-        new_files = after - before
-        if new_files:
-            # 파일 크기 안정화 확인 (다운로드 중 아닌지)
-            stable = []
-            for f in new_files:
-                try:
-                    size1 = f.stat().st_size
-                    time.sleep(1)
-                    size2 = f.stat().st_size
-                    if size1 == size2 and size1 > 0:
-                        stable.append(f)
-                except Exception:
-                    pass
-            if stable:
-                print(f"  ✅ {len(stable)}개 MP3 감지됨")
-                return stable
-        time.sleep(1)
 
-    print("  ⚠️  시간 초과 — 다운로드된 파일을 찾지 못했습니다.")
-    return []
+    while time.time() < deadline:
+        new_files = set(d.glob("*.mp3")) - before
+        stable = _stable_files(new_files)
+        elapsed = int(timeout - (deadline - time.time()))
+        print(f"\r  {len(stable)}/{expected}개 완료 ({elapsed}s)...", end="", flush=True)
+        if len(stable) >= expected:
+            print()
+            return stable
+        time.sleep(2)
+
+    print()
+    # 타임아웃 — 지금까지 안정화된 것이라도 반환
+    new_files = set(d.glob("*.mp3")) - before
+    stable = _stable_files(new_files)
+    if stable:
+        print(f"  ⚠️  타임아웃 — {len(stable)}개만 수집됨 (예상 {expected}개)")
+    else:
+        print("  ❌ 다운로드된 파일을 찾지 못했습니다.")
+    return stable
+
+
+def _stable_files(files: set) -> list[Path]:
+    """크기가 안정화된 파일(다운로드 완료)만 반환."""
+    stable = []
+    for f in files:
+        try:
+            s1 = f.stat().st_size
+            time.sleep(0.5)
+            s2 = f.stat().st_size
+            if s1 == s2 and s1 > 0:
+                stable.append(f)
+        except Exception:
+            pass
+    return stable
 
 
 def click_download_for_song(actions: dict, song_idx: int, y_offset: int = 0):
@@ -322,26 +333,23 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
     has_learned = ("song_options_btn" in actions and "download_btn" in actions)
     all_new_files: list[Path] = []
 
+    before = snapshot_downloads()  # 다운로드 전 스냅샷
+
     if has_learned:
-        # 곡 카드 간격 추정 (두 번째 곡 옵션 버튼 y 오프셋)
-        # Suno 곡 카드 높이 ~80px 가정
-        CARD_HEIGHT = 80
+        # 모든 곡 다운로드 버튼 클릭 (먼저 다 끝냄)
+        CARD_HEIGHT = 80  # Suno 곡 카드 높이 추정
         for song_idx in range(dl_count):
-            before = snapshot_downloads()
             y_off = song_idx * CARD_HEIGHT
-            ok = click_download_for_song(actions, song_idx, y_offset=y_off)
-            if ok:
-                new_files = wait_for_new_mp3(before, timeout=90)
-                all_new_files.extend(new_files)
-            else:
-                break
+            click_download_for_song(actions, song_idx, y_offset=y_off)
+            time.sleep(1.0)  # 클릭 간 짧은 대기
+        # 모든 클릭 완료 후 → 파일 개수 기반 대기
+        all_new_files = wait_for_downloads_complete(before, expected=dl_count)
     else:
         # 학습 좌표 없음 → 수동 안내
-        before = snapshot_downloads()
         print("  ℹ️  다운로드 좌표 미학습 — 수노 페이지에서 직접 각 곡을 다운로드하세요.")
         print("      각 곡의 ⋮ → Download → MP3 Audio 클릭")
         input("  모두 다운로드 후 Enter ▶ ")
-        all_new_files = list(set(Path.home().glob("Downloads/*.mp3")) - before)
+        all_new_files = _stable_files(set(Path.home().glob("Downloads/*.mp3")) - before)
 
     # [9/9] 파일 이동 + 곡 선택
     print("\n[9/9] 다운로드 파일 이동 및 최종 선택...")
