@@ -95,108 +95,76 @@ def wait_for_generation(wait_sec: int = 100):
 
 
 # ---------------------------------------------------------------------------
-# 다운로드: Claude Haiku로 ⋮ 버튼 위치 탐지
+# 다운로드 감지: 스냅샷 방식 (~/Downloads 변경 감시)
 # ---------------------------------------------------------------------------
-def take_screenshot_b64_resized(max_width: int = 1280) -> tuple[str, int, int]:
-    """스크린샷 찍고 base64 반환. (b64, 원본_w, 원본_h)"""
-    from PIL import Image
-    img = pyautogui.screenshot()
-    orig_w, orig_h = img.size
-    if orig_w > max_width:
-        ratio = max_width / orig_w
-        img = img.resize((max_width, int(orig_h * ratio)), Image.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    b64 = base64.standard_b64encode(buf.getvalue()).decode()
-    return b64, orig_w, orig_h
+
+def snapshot_downloads() -> set:
+    """현재 ~/Downloads 의 MP3 파일 목록을 스냅샷으로 반환."""
+    d = Path.home() / "Downloads"
+    if not d.exists():
+        return set()
+    return set(d.glob("*.mp3"))
 
 
-def find_song_menu_buttons(api_key: str) -> list[dict]:
+def wait_for_new_mp3(before: set, timeout: int = 90) -> list[Path]:
     """
-    Claude Haiku로 스크린샷 분석 →
-    오른쪽 Workspace 패널에서 최상단 2개 곡의 ⋮ 버튼 좌표 리스트 반환.
-    좌표는 원본 해상도 기준.
+    before 스냅샷 이후 ~/Downloads 에 새로 생긴 MP3 파일이 나타날 때까지 대기.
+    완전히 다운로드된 파일(크기 변화 없음)만 반환.
     """
-    if not ANTHROPIC_AVAILABLE:
-        return []
+    d = Path.home() / "Downloads"
+    print(f"  ⏳ ~/Downloads 에서 MP3 다운로드 대기 중... (최대 {timeout}초)")
 
-    b64, orig_w, orig_h = take_screenshot_b64_resized(max_width=1280)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        after = set(d.glob("*.mp3"))
+        new_files = after - before
+        if new_files:
+            # 파일 크기 안정화 확인 (다운로드 중 아닌지)
+            stable = []
+            for f in new_files:
+                try:
+                    size1 = f.stat().st_size
+                    time.sleep(1)
+                    size2 = f.stat().st_size
+                    if size1 == size2 and size1 > 0:
+                        stable.append(f)
+                except Exception:
+                    pass
+            if stable:
+                print(f"  ✅ {len(stable)}개 MP3 감지됨")
+                return stable
+        time.sleep(1)
 
-    client = anthropic.Anthropic(api_key=api_key)
-    resp = client.messages.create(
-        model="claude-haiku-4-5",
-        max_tokens=256,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"이 화면은 Suno 음악 생성 결과 페이지입니다. "
-                        f"화면 크기: {orig_w}×{orig_h}픽셀.\n"
-                        "오른쪽 Workspace 패널에 방금 생성된 곡 목록이 있습니다. "
-                        "각 곡 항목 오른쪽 끝에 '⋮' (세 점) 메뉴 버튼이 있습니다. "
-                        "가장 위에 있는 2개 곡의 ⋮ 버튼 좌표를 원본 해상도 기준으로 반환하세요.\n"
-                        "반환 형식 (JSON만, 다른 텍스트 없이):\n"
-                        '[{"x": 픽셀X, "y": 픽셀Y}, {"x": 픽셀X, "y": 픽셀Y}]\n'
-                        "곡이 1개만 보이면 1개만, 없으면 [] 반환."
-                    ),
-                },
-            ],
-        }],
-    )
-    raw = resp.content[0].text.strip()
-    try:
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        parsed = json.loads(raw.strip())
-        if isinstance(parsed, list):
-            return [{"x": int(p["x"]), "y": int(p["y"])} for p in parsed if "x" in p and "y" in p]
-    except Exception:
-        pass
+    print("  ⚠️  시간 초과 — 다운로드된 파일을 찾지 못했습니다.")
     return []
 
 
-def click_download_mp3(menu_coords: dict, song_idx: int):
+def click_download_for_song(actions: dict, song_idx: int, y_offset: int = 0):
     """
-    ⋮ 메뉴 클릭 → 'Download' hover → 'MP3 Audio' 클릭.
-    수노 드롭다운 메뉴 항목 순서 기반 상대 오프셋 사용.
+    학습된 song_options_btn → download_btn 좌표를 사용해 곡 다운로드.
+    song_idx: 0=첫 번째 곡, 1=두 번째 곡 (y 오프셋으로 구분)
+    y_offset: 두 번째 곡은 첫 번째 곡 카드 높이만큼 아래
     """
-    mx, my = int(menu_coords["x"]), int(menu_coords["y"])
-    print(f"  ⋮ 메뉴 클릭 (곡 {song_idx}): ({mx}, {my})")
+    if "song_options_btn" not in actions or "download_btn" not in actions:
+        print(f"  ⚠️  학습된 다운로드 좌표 없음. 설정 → 고급 → 🎬 녹화 학습을 실행하세요.")
+        return False
 
-    # ⋮ 버튼에 마우스 이동 후 클릭
-    pyautogui.moveTo(mx, my, duration=0.4)
+    # ... 버튼 클릭 (두 번째 곡은 y_offset 만큼 아래)
+    ox = int(actions["song_options_btn"]["x"])
+    oy = int(actions["song_options_btn"]["y"]) + y_offset
+    print(f"  ⋮ 버튼 클릭 (곡 {song_idx+1}): ({ox}, {oy})")
+    pyautogui.moveTo(ox, oy, duration=0.4)
     pyautogui.click()
-    time.sleep(0.7)
+    time.sleep(0.8)
 
-    # 드롭다운이 열리면 'Download' 항목 찾기 (약 12번째 항목, 항목 높이 ~28px)
-    # 드롭다운은 ⋮ 버튼 왼쪽에서 열림 → x 오프셋 -120, y는 항목 순서로
-    ITEM_H = 28
-    DOWNLOAD_OFFSET_Y = 12 * ITEM_H  # 'Download'는 약 12번째 항목
-    MENU_X_OFFSET = -130             # 드롭다운 메뉴가 왼쪽으로 열림
-
-    download_x = mx + MENU_X_OFFSET
-    download_y = my + DOWNLOAD_OFFSET_Y
-
-    print(f"  'Download' hover: ({download_x}, {download_y})")
-    pyautogui.moveTo(download_x, download_y, duration=0.3)
-    time.sleep(0.5)  # 서브메뉴 출현 대기
-
-    # 서브메뉴 'MP3 Audio'는 'Download' 오른쪽 또는 아래에 나타남
-    mp3_x = download_x - 120  # 서브메뉴가 왼쪽으로
-    mp3_y = download_y         # 첫 번째 서브메뉴 항목
-
-    print(f"  'MP3 Audio' 클릭: ({mp3_x}, {mp3_y})")
-    pyautogui.moveTo(mp3_x, mp3_y, duration=0.3)
+    # 다운로드 버튼 클릭
+    dx = int(actions["download_btn"]["x"])
+    dy = int(actions["download_btn"]["y"])
+    print(f"  다운로드 클릭: ({dx}, {dy})")
+    pyautogui.moveTo(dx, dy, duration=0.3)
     pyautogui.click()
-    time.sleep(2.0)  # 다운로드 시작 대기
+    time.sleep(1.5)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -248,27 +216,13 @@ def select_song(moved: list[Path], mode: str) -> list[Path]:
 # ---------------------------------------------------------------------------
 # 다운로드 파일 이동
 # ---------------------------------------------------------------------------
-def move_downloads_to_raw_data(title: str, expected_count: int = 2,
-                               output_dir: Path = None) -> list:
+def move_new_mp3s(new_files: list[Path], title: str,
+                  output_dir: Path = None) -> list[Path]:
     """
-    ~/Downloads 에서 가장 최근 MP3 파일을 목적 폴더로 이동.
-    output_dir이 지정되면 그 폴더에, 없으면 raw_data/{날짜}_{제목}/ 에 저장.
-    이동된 파일 경로 리스트 반환.
+    감지된 새 MP3 파일들을 목적 폴더로 이동.
+    output_dir 지정 시 그 폴더에, 없으면 raw_data/{날짜}_{제목}/ 에 저장.
     """
-    downloads_dir = Path.home() / "Downloads"
-    if not downloads_dir.exists():
-        print("  ⚠️  ~/Downloads 폴더를 찾을 수 없습니다.")
-        return []
-
-    now = time.time()
-    recent_mp3s = sorted(
-        [f for f in downloads_dir.glob("*.mp3") if now - f.stat().st_mtime < 120],
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )[:expected_count]
-
-    if not recent_mp3s:
-        print("  ⚠️  ~/Downloads에서 최근 MP3 파일을 찾지 못했습니다.")
+    if not new_files:
         return []
 
     if output_dir:
@@ -281,7 +235,7 @@ def move_downloads_to_raw_data(title: str, expected_count: int = 2,
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     moved = []
-    for src in recent_mp3s:
+    for src in new_files:
         dst = dest_dir / src.name
         shutil.move(str(src), str(dst))
         print(f"  📁 이동: {src.name} → {dest_dir.name}/")
@@ -361,37 +315,37 @@ def run(title: str, prompt: str, style: str, api_key: str = "", select: str = "m
     # [7/9] 생성 대기
     wait_for_generation(wait_sec=100)
 
-    # [8/9] 다운로드 (select 모드에 따라 1곡 or 2곡)
-    dl_count = 1 if select in ("random", "longest") else 2
-    print(f"\n[8/9] 생성된 곡 MP3 다운로드 ({dl_count}곡)...")
-    if api_key and ANTHROPIC_AVAILABLE:
-        print("  Claude Haiku로 다운로드 버튼 위치 탐지 중...")
-        song_btns = find_song_menu_buttons(api_key)
-        if song_btns:
-            # random 모드: 1곡만 다운로드 (랜덤 선택)
-            if select == "random":
-                import random as _random
-                song_btns = [_random.choice(song_btns)]
-            # longest 모드: 2곡 모두 다운로드 후 나중에 크기 비교
-            for i, btn in enumerate(song_btns, 1):
-                print(f"\n  곡 {i}/{len(song_btns)} 다운로드...")
-                click_download_mp3(btn, i)
-                time.sleep(1.5)
-        else:
-            print("  ⚠️  ⋮ 버튼을 자동으로 찾지 못했습니다.")
-            print("      수노 페이지에서 직접 각 곡의 ⋮ → Download → MP3 Audio를 클릭하세요.")
+    # [8/9] 다운로드 — 학습 좌표 사용 + 스냅샷 방식 감지
+    dl_count = 2  # Suno는 항상 2곡 생성 (longest/random이어도 2곡 받아서 선택)
+    print(f"\n[8/9] MP3 다운로드 ({dl_count}곡)...")
+
+    has_learned = ("song_options_btn" in actions and "download_btn" in actions)
+    all_new_files: list[Path] = []
+
+    if has_learned:
+        # 곡 카드 간격 추정 (두 번째 곡 옵션 버튼 y 오프셋)
+        # Suno 곡 카드 높이 ~80px 가정
+        CARD_HEIGHT = 80
+        for song_idx in range(dl_count):
+            before = snapshot_downloads()
+            y_off = song_idx * CARD_HEIGHT
+            ok = click_download_for_song(actions, song_idx, y_offset=y_off)
+            if ok:
+                new_files = wait_for_new_mp3(before, timeout=90)
+                all_new_files.extend(new_files)
+            else:
+                break
     else:
-        print("  ℹ️  ANTHROPIC_API_KEY 없음 — 수동 다운로드 필요")
-        if select == "random":
-            print("      수노 페이지에서 곡 1개의 ⋮ → Download → MP3 Audio를 클릭하세요.")
-        else:
-            print("      수노 페이지에서 각 곡의 ⋮ → Download → MP3 Audio를 클릭하세요.")
-        input("  다운로드 완료 후 Enter ▶ ")
+        # 학습 좌표 없음 → 수동 안내
+        before = snapshot_downloads()
+        print("  ℹ️  다운로드 좌표 미학습 — 수노 페이지에서 직접 각 곡을 다운로드하세요.")
+        print("      각 곡의 ⋮ → Download → MP3 Audio 클릭")
+        input("  모두 다운로드 후 Enter ▶ ")
+        all_new_files = list(set(Path.home().glob("Downloads/*.mp3")) - before)
 
     # [9/9] 파일 이동 + 곡 선택
     print("\n[9/9] 다운로드 파일 이동 및 최종 선택...")
-    moved = move_downloads_to_raw_data(title, expected_count=dl_count,
-                                       output_dir=output_dir)
+    moved = move_new_mp3s(all_new_files, title, output_dir=output_dir)
     final = select_song(moved, mode=select)
 
     print()
