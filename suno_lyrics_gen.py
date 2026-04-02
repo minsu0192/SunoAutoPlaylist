@@ -1,6 +1,6 @@
 """
 가사 및 콘텐츠 생성 모듈
-Claude Haiku 4.5 + vision으로 키워드+이미지 → 가사/스타일/유튜브 설명 생성.
+Claude Haiku 4.5 + vision으로 키워드+이미지 → 가사/스타일/유튜브 제목+설명 생성.
 
 실행: python suno_lyrics_gen.py --keyword "sunset calm" --image cover.jpg
 """
@@ -8,6 +8,7 @@ Claude Haiku 4.5 + vision으로 키워드+이미지 → 가사/스타일/유튜�
 import argparse
 import base64
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,16 +21,20 @@ def generate_content(
     api_key: str = "",
     base_style: str = "cinematic, orchestral, emotional",
     vocal: str = "female",
+    channel_style: dict = None,
 ) -> dict:
     """
-    키워드(+이미지)를 바탕으로 Suno용 가사/스타일/유튜브 설명을 생성.
+    키워드(+이미지)를 바탕으로 Suno용 가사/스타일/유튜브 제목+설명을 생성.
+    channel_style이 있으면 해당 채널 스타일로 YouTube 제목/설명 생성.
 
     Returns:
         {
-            "lyrics":      "가사 텍스트 (4~8줄)",
-            "style":       "Suno 스타일 프롬프트 (영어)",
-            "description": "유튜브 설명 (한국어, 3~5줄)",
-            "tags":        ["tag1", "tag2", ...]
+            "lyrics":            "가사",
+            "style":             "Suno 스타일 프롬프트 (영어)",
+            "song_title":        "곡 제목",
+            "youtube_title":     "YouTube 영상 제목",
+            "youtube_description": "YouTube 설명 (여러 줄 + 해시태그)",
+            "tags":              ["tag1", ...]
         }
     """
     client = anthropic.Anthropic(api_key=api_key)
@@ -41,10 +46,8 @@ def generate_content(
         b64 = base64.standard_b64encode(raw).decode()
         suffix = Path(image_path).suffix.lower()
         media_type = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png",  ".webp": "image/webp",
         }.get(suffix, "image/jpeg")
         image_block = {
             "type": "image",
@@ -53,17 +56,33 @@ def generate_content(
 
     style_with_vocal = f"{base_style}, {vocal} vocal"
 
+    # YouTube 스타일 힌트 (채널 분석 결과 있으면 포함)
+    yt_style_hint = ""
+    if channel_style:
+        title_tmpl = channel_style.get("title_template", "")
+        desc_tmpl  = channel_style.get("description_template", "")
+        notes      = channel_style.get("style_notes", "")
+        if title_tmpl or notes:
+            yt_style_hint = f"""
+YouTube 제목/설명은 아래 채널 스타일을 참고해서 작성하세요:
+- 제목 패턴: {title_tmpl}
+- 설명 패턴: {desc_tmpl}
+- 채널 특징: {notes}
+"""
+
     prompt_text = f"""키워드: "{keyword}"
 기본 스타일: {style_with_vocal}
-
+{yt_style_hint}
 {"위 이미지와 " if image_block else ""}키워드를 바탕으로 Suno AI 음악 생성을 위한 콘텐츠를 만들어 주세요.
 
 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 {{
-  "lyrics": "감성적인 가사 (4~8줄, 한국어 또는 영어, 키워드 분위기에 맞게)",
-  "style": "Suno 스타일 프롬프트 (영어, 쉼표 구분, 예: cinematic, orchestral, female vocal, emotional, 120bpm)",
-  "description": "유튜브 영상 설명 (한국어, 3~5줄, 감성적으로, 해시태그 포함)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5"]
+  "lyrics":             "감성적인 가사 (4~8줄, 한국어 또는 영어)",
+  "style":              "Suno 스타일 프롬프트 (영어, 쉼표 구분, 예: cinematic, orchestral, female vocal)",
+  "song_title":         "곡 제목 (한국어 또는 영어, 짧고 감성적으로)",
+  "youtube_title":      "YouTube 영상 제목 (채널 스타일 반영, 이모지 포함, 60자 이내)",
+  "youtube_description": "YouTube 설명 (한국어, 4~6줄, 감성적인 소개 + 해시태그 5개 이상)",
+  "tags":               ["태그1", "태그2", "태그3", "태그4", "태그5"]
 }}"""
 
     content_blocks = []
@@ -73,7 +92,7 @@ JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 
     resp = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=800,
+        max_tokens=1000,
         messages=[{"role": "user", "content": content_blocks}],
     )
 
@@ -81,11 +100,8 @@ JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 
     # ```json ... ``` 블록 처리
     if "```" in raw:
-        parts = raw.split("```")
-        for part in parts[1::2]:  # 홀수 인덱스 = 코드블록 내용
-            part = part.strip()
-            if part.startswith("json"):
-                part = part[4:].strip()
+        for part in raw.split("```")[1::2]:
+            part = part.strip().lstrip("json").strip()
             try:
                 return json.loads(part)
             except json.JSONDecodeError:
@@ -97,10 +113,12 @@ JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 def _fallback_content(keyword: str, base_style: str, vocal: str) -> dict:
     """API 실패 시 키워드 기반 기본값 생성."""
     return {
-        "lyrics": f"[{keyword}]\n\n바람이 불어오는 곳\n그 곳으로 가고 싶어\n{keyword}의 빛 속에서\n새로운 하루가 시작돼",
-        "style": f"{base_style}, {vocal} vocal",
-        "description": f"✨ {keyword}\n\nAI로 생성한 음악입니다.\n\n#AIMusic #Suno #{keyword.replace(' ', '')}",
-        "tags": ["AI music", "Suno", "K-pop", keyword, "감성"],
+        "lyrics":      f"[{keyword}]\n\n바람이 불어오는 곳\n그 곳으로 가고 싶어\n{keyword}의 빛 속에서\n새로운 하루가 시작돼",
+        "style":       f"{base_style}, {vocal} vocal",
+        "song_title":  keyword,
+        "youtube_title":       f"🎵 {keyword} — AI Music",
+        "youtube_description": f"✨ {keyword}\n\nAI로 생성한 음악입니다.\n\n#AIMusic #Suno #{keyword.replace(' ','')}",
+        "tags":        ["AI music", "Suno", keyword, "감성", "K-pop"],
     }
 
 
@@ -110,29 +128,40 @@ def generate_content_safe(
     api_key: str = "",
     base_style: str = "cinematic, orchestral, emotional",
     vocal: str = "female",
+    channel_style: dict = None,
 ) -> dict:
     """generate_content의 안전한 래퍼 (실패 시 fallback 반환)."""
     try:
-        return generate_content(keyword, image_path, api_key, base_style, vocal)
+        return generate_content(keyword, image_path, api_key,
+                                base_style, vocal, channel_style)
     except Exception as e:
         print(f"[lyrics_gen] 생성 실패 ({e}), 기본값 사용")
         return _fallback_content(keyword, base_style, vocal)
 
 
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # CLI
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+
 def main():
-    parser = argparse.ArgumentParser(description="Claude Haiku로 가사/스타일/설명 생성")
-    parser.add_argument("--keyword", required=True, help="곡 키워드")
-    parser.add_argument("--image",   default=None,  help="커버 이미지 경로")
-    parser.add_argument("--style",   default="cinematic, orchestral, emotional", help="기본 스타일")
-    parser.add_argument("--vocal",   default="female", choices=["female", "male", "none"], help="보컬 타입")
-    parser.add_argument("--api-key", default="", help="Anthropic API 키 (없으면 환경변수 사용)")
+    parser = argparse.ArgumentParser(description="Claude Haiku로 가사/스타일/유튜브 제목+설명 생성")
+    parser.add_argument("--keyword",  required=True, help="곡 키워드")
+    parser.add_argument("--image",    default=None,  help="커버 이미지 경로")
+    parser.add_argument("--style",    default="cinematic, orchestral, emotional")
+    parser.add_argument("--vocal",    default="female",
+                        choices=["female", "male", "none"])
+    parser.add_argument("--api-key",  default="")
     args = parser.parse_args()
 
-    import os
     api_key = args.api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        # config 파일에서도 시도
+        cfg_file = Path.home() / ".suno_config.json"
+        if cfg_file.exists():
+            try:
+                api_key = json.loads(cfg_file.read_text())["anthropic_api_key"]
+            except Exception:
+                pass
     if not api_key:
         print("❌ ANTHROPIC_API_KEY 가 없습니다.")
         sys.exit(1)
