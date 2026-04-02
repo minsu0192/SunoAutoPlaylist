@@ -82,16 +82,20 @@ class SunoMenuBar(rumps.App):
         self.schedule_item = rumps.MenuItem("⏰ 예약: 없음",  callback=None)
         self.status_item   = rumps.MenuItem("● 준비됨",       callback=None)
 
+        self.queue_item  = rumps.MenuItem("⏳ 대기: 0개", callback=None)
+
         self.menu = [
             self.run_item,
             self.schedule_item,
+            self.queue_item,
             None,
-            rumps.MenuItem("📂 입력 폴더 열기",   callback=self.open_input),
-            rumps.MenuItem("📁 결과물 폴더 열기",  callback=self.open_output),
-            rumps.MenuItem("📋 로그 보기",         callback=self.show_log),
+            rumps.MenuItem("📂 입력 폴더 열기",    callback=self.open_input),
+            rumps.MenuItem("📁 결과물 폴더 열기",   callback=self.open_output),
+            rumps.MenuItem("📋 로그 보기",          callback=self.show_log),
             None,
-            rumps.MenuItem("🔄 UI 재학습",         callback=self.relearn),
-            rumps.MenuItem("⚙️ 설정...",           callback=self.open_settings),
+            rumps.MenuItem("🔄 UI 재학습",          callback=self.relearn),
+            rumps.MenuItem("⚙️ 설정...",            callback=self.open_settings),
+            rumps.MenuItem("❓ 사용 방법",           callback=self.show_help),
             None,
             self.status_item,
             None,
@@ -121,13 +125,34 @@ class SunoMenuBar(rumps.App):
             pm = _get_pm(config)
             pm.scan_input()
             stats = pm.get_stats()
-            n = stats.get("pending", 0)
+            pending  = stats.get("pending", 0)
+            done     = stats.get("done", 0)
+            failed   = stats.get("failed", 0)
+            total    = sum(stats.values())
+
             self.run_item.title = (
-                f"▶ 지금 실행  ({n}개 대기 중)" if n else "▶ 지금 실행  (대기 없음)"
+                f"▶ 지금 실행  ({pending}개 대기 중)"
+                if pending else "▶ 지금 실행  (대기 없음)"
             )
-            schedule = config.get("schedule_time", "")
-            self.schedule_item.title = (
-                f"⏰ 예약: {schedule}" if schedule else "⏰ 예약: 없음"
+            schedule_on = config.get("schedule_enabled", False)
+            schedule    = config.get("schedule_time", "")
+            if schedule_on and schedule:
+                days = config.get("schedule_days", [])
+                day_str = "".join(
+                    lbl for k, lbl in
+                    [("mon","월"),("tue","화"),("wed","수"),("thu","목"),
+                     ("fri","금"),("sat","토"),("sun","일")]
+                    if k in days
+                )
+                self.schedule_item.title = f"⏰ 예약: {schedule}  [{day_str}]"
+            else:
+                self.schedule_item.title = "⏰ 예약: 비활성"
+
+            done_str   = f"  완료 {done}개" if done else ""
+            failed_str = f"  실패 {failed}개" if failed else ""
+            self.queue_item.title = (
+                f"📊 전체 {total}개{done_str}{failed_str}"
+                if total else "📊 프로젝트 없음"
             )
         except Exception:
             pass
@@ -234,14 +259,22 @@ class SunoMenuBar(rumps.App):
     @rumps.clicked("📋 로그 보기")
     def show_log(self, _):
         tail = _read_log_tail(50)
+        # AppleScript 특수문자 이스케이프
         escaped = (tail.replace("\\", "\\\\")
                        .replace('"', '\\"')
                        .replace("\n", "\\n"))
-        _osascript(
-            f'display dialog "{escaped}" '
+        result = _osascript(
+            f'button returned of (display dialog "{escaped}" '
             f'with title "수노 자동화 — 최근 로그" '
-            f'buttons {{"닫기"}} default button "닫기"'
+            f'buttons {{"로그 파일 열기", "닫기"}} default button "닫기")'
         )
+        if result == "로그 파일 열기" and LOG_FILE.exists():
+            subprocess.Popen(["open", str(LOG_FILE)])
+
+    @rumps.clicked("❓ 사용 방법")
+    def show_help(self, _):
+        subprocess.Popen([sys.executable,
+                          str(SCRIPT_DIR / "suno_settings.py"), "--help-tab"])
 
     @rumps.clicked("🔄 UI 재학습")
     def relearn(self, _):
