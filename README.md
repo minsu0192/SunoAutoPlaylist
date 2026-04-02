@@ -13,9 +13,11 @@ Claude API (1회/곡)
   → 가사 + Suno 스타일 + 곡 제목
   → YouTube 제목 + 설명 (참고 채널 스타일 반영)
         ↓
+Chrome 자동 실행 → suno.com/create 이동
 pyautogui → Suno.com 자동 조작
   → 가사/스타일/제목 입력 → Create 클릭
-  → MP3 자동 다운로드
+  → 생성 대기 (~2분)
+  → MP3 자동 다운로드 (~/Downloads 스냅샷 감지)
         ↓
 FFmpeg → 커버이미지 + MP3 → MP4
         ↓
@@ -165,12 +167,28 @@ pyinstaller --onefile --windowed --name SunoAuto suno_menu_bar.py
 
 ---
 
+## 자동화 실행 흐름
+
+1. 메뉴바 → ▶ 지금 실행
+2. **Chrome 자동 실행** → suno.com/create 이동 (로그인 유지 전제)
+3. pyautogui로 Advanced 탭 → 가사/스타일/제목 자동 입력 → Create 클릭
+4. 생성 대기 (~2분)
+5. 학습된 좌표로 ⋮ 버튼 → 다운로드 버튼 자동 클릭
+6. `~/Downloads` 스냅샷 비교로 새 MP3 감지 → 프로젝트 폴더 이동
+7. FFmpeg로 MP3 + 커버이미지 → MP4
+8. YouTube 자동 업로드 (설정된 플레이리스트에 추가)
+
+> Suno는 항상 로그인 상태 유지 필요 (Chrome 쿠키 기반)
+
+---
+
 ## 문제 해결
 
 | 증상 | 해결 |
 |------|------|
 | pyautogui 접근성 오류 | 시스템 설정 → 개인정보 → 손쉬운 사용 → Terminal 허용 |
 | 스크린샷 검은 화면 | 시스템 설정 → 화면 녹화 → Terminal 허용 |
+| 다운로드 파일 미감지 | 시스템 설정 → 개인정보 → 파일 및 폴더 → Terminal → Downloads 허용 |
 | API 401 오류 | 설정에서 Anthropic API 키 재입력 |
 | YouTube 인증 실패 | client_secrets.json 경로 확인 |
 | yt-dlp 없음 | `pip install yt-dlp` |
