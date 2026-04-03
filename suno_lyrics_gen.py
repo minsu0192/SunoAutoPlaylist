@@ -22,6 +22,7 @@ def generate_content(
     base_style: str = "cinematic, orchestral, emotional",
     vocal: str = "female",
     channel_style: dict = None,
+    performance_hint: str = "",
 ) -> dict:
     """
     키워드(+이미지)를 바탕으로 Suno용 가사/스타일/유튜브 제목+설명을 생성.
@@ -70,9 +71,14 @@ YouTube 제목/설명은 아래 채널 스타일을 참고해서 작성하세요
 - 채널 특징: {notes}
 """
 
+    # 성과 피드백 힌트
+    perf_section = ""
+    if performance_hint:
+        perf_section = f"\n{performance_hint}\n"
+
     prompt_text = f"""키워드: "{keyword}"
 기본 스타일: {style_with_vocal}
-{yt_style_hint}
+{yt_style_hint}{perf_section}
 {"위 이미지와 " if image_block else ""}키워드를 바탕으로 Suno AI 음악 생성을 위한 콘텐츠를 만들어 주세요.
 
 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
@@ -129,11 +135,13 @@ def generate_content_safe(
     base_style: str = "cinematic, orchestral, emotional",
     vocal: str = "female",
     channel_style: dict = None,
+    performance_hint: str = "",
 ) -> dict:
     """generate_content의 안전한 래퍼 (실패 시 fallback 반환)."""
     try:
         return generate_content(keyword, image_path, api_key,
-                                base_style, vocal, channel_style)
+                                base_style, vocal, channel_style,
+                                performance_hint)
     except Exception as e:
         print(f"[lyrics_gen] 생성 실패 ({e}), 기본값 사용")
         return _fallback_content(keyword, base_style, vocal)

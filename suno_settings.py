@@ -80,6 +80,12 @@ class SettingsWindow:
         self.root.resizable(True, True)
         self.root.attributes("-topmost", True)
 
+        try:
+            import sv_ttk
+            sv_ttk.set_theme("dark")
+        except ImportError:
+            pass
+
         W, H = 640, 580
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
@@ -237,8 +243,7 @@ class SettingsWindow:
         f.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(2, 4)); row += 1
         self.var_channel_url = tk.StringVar(value=self.cfg["youtube_channel_url"])
         ttk.Entry(f, textvariable=self.var_channel_url,
-                  font=("Helvetica", 11),
-                  placeholder_text="https://www.youtube.com/@channelname").pack(
+                  font=("Helvetica", 11)).pack(
             side="left", fill="x", expand=True)
         self._analyze_btn = ttk.Button(f, text="🔍 채널 분석",
                                        command=self._analyze_channel)
