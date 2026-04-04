@@ -100,10 +100,12 @@ class SettingsWindow(ctk.CTkToplevel):
             ctk.CTkEntry(col, textvariable=v, height=34, width=60).pack(anchor="w", pady=(2, 0))
 
         # ── 보컬 선택
-        self._section(m, "보컬곡 선택")
+        self._section(m, "보컬곡 선택 (2곡 중)")
         v_pick = ctk.StringVar(value=self._config.vocal_pick)
         self._vars["vocal_pick"] = v_pick
-        ctk.CTkSegmentedButton(m, values=["longer", "shorter", "both"], variable=v_pick).pack(fill="x")
+        ctk.CTkSegmentedButton(m, values=["longer", "shorter", "random", "both"], variable=v_pick).pack(fill="x")
+        ctk.CTkLabel(m, text="longer=긴 곡 | shorter=짧은 곡 | random=랜덤 1곡 | both=2곡 다",
+                      font=("", 10), text_color="gray50").pack(anchor="w", pady=(2, 0))
 
         # ── 실행 범위
         self._section(m, "실행 범위")
@@ -111,6 +113,15 @@ class SettingsWindow(ctk.CTkToplevel):
         self._vars["pipeline_scope"] = v_scope
         ctk.CTkSegmentedButton(m, values=["songs", "videos", "upload"], variable=v_scope).pack(fill="x")
         ctk.CTkLabel(m, text="songs=곡만 | videos=+영상 | upload=+YouTube",
+                      font=("", 10), text_color="gray50").pack(anchor="w", pady=(2, 0))
+
+        # ── Pixabay (이미지 자동 다운로드)
+        self._section(m, "Pixabay (이미지 자동)")
+        v_pix = ctk.StringVar(value=self._config.pixabay_api_key)
+        self._vars["pixabay_api_key"] = v_pix
+        ctk.CTkEntry(m, textvariable=v_pix, height=34,
+                      placeholder_text="Pixabay API 키 (없으면 비워두기)").pack(fill="x")
+        ctk.CTkLabel(m, text="키워드로 영상 배경 이미지 자동 검색. pixabay.com에서 무료 발급",
                       font=("", 10), text_color="gray50").pack(anchor="w", pady=(2, 0))
 
         # ── YouTube
@@ -183,6 +194,7 @@ class SettingsWindow(ctk.CTkToplevel):
         try:
             c = self._config
             c.anthropic_api_key = self._vars["anthropic_api_key"].get().strip()
+            c.pixabay_api_key = self._vars["pixabay_api_key"].get().strip()
             c.korean_songs = int(self._vars["korean_songs"].get())
             c.english_songs = int(self._vars["english_songs"].get())
             c.instrumental_songs = int(self._vars["instrumental_songs"].get())
@@ -304,8 +316,9 @@ class App(ctk.CTk):
         scope_txt = {"songs": "곡만", "videos": "곡+영상", "upload": "전체"}.get(cfg.pipeline_scope, "?")
         total = cfg.korean_songs + cfg.english_songs + cfg.instrumental_songs
 
+        pix = "IMG" if cfg.pixabay_api_key else ""
         self._top_label = ctk.CTkLabel(inner_top,
-            text=f"KR {cfg.korean_songs} | EN {cfg.english_songs} | Inst {cfg.instrumental_songs} | {cfg.vocal_pick} | {scope_txt}",
+            text=f"KR {cfg.korean_songs} | EN {cfg.english_songs} | Inst {cfg.instrumental_songs} | {cfg.vocal_pick} | {scope_txt}" + (f" | {pix}" if pix else ""),
             font=("", 12), text_color="gray50")
         self._top_label.pack(side="left", padx=8)
 
@@ -429,8 +442,9 @@ class App(ctk.CTk):
     def _update_top_bar(self):
         cfg = self._config
         scope_txt = {"songs": "곡만", "videos": "곡+영상", "upload": "전체"}.get(cfg.pipeline_scope, "?")
+        pix = "IMG" if cfg.pixabay_api_key else ""
         self._top_label.configure(
-            text=f"KR {cfg.korean_songs} | EN {cfg.english_songs} | Inst {cfg.instrumental_songs} | {cfg.vocal_pick} | {scope_txt}")
+            text=f"KR {cfg.korean_songs} | EN {cfg.english_songs} | Inst {cfg.instrumental_songs} | {cfg.vocal_pick} | {scope_txt}" + (f" | {pix}" if pix else ""))
 
     def _refresh(self):
         for c in self._cards:

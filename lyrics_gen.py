@@ -185,3 +185,47 @@ Reply with ONLY the description text, nothing else."""
         return _call_claude(api_key, prompt).strip()[:200]
     except Exception:
         return keyword
+
+
+def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | None:
+    """
+    Pixabay에서 키워드 기반 이미지를 다운로드한다.
+
+    Returns:
+        저장된 이미지 Path, 또는 실패 시 None
+    """
+    import urllib.request
+    import urllib.parse
+
+    if not api_key:
+        return None
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    query = urllib.parse.quote(keyword)
+    url = (
+        f"https://pixabay.com/api/?key={api_key}&q={query}"
+        f"&image_type=photo&orientation=horizontal&per_page=5&safesearch=true"
+    )
+
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+
+        hits = data.get("hits", [])
+        if not hits:
+            return None
+
+        # 첫 번째 결과의 큰 이미지 다운로드
+        img_url = hits[0].get("largeImageURL") or hits[0].get("webformatURL")
+        if not img_url:
+            return None
+
+        ext = Path(urllib.parse.urlparse(img_url).path).suffix or ".jpg"
+        safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in keyword)[:30]
+        save_path = save_dir / f"{safe_name}{ext}"
+
+        urllib.request.urlretrieve(img_url, save_path)
+        return save_path
+
+    except Exception:
+        return None

@@ -16,10 +16,11 @@ CONFIG_FILE = Path.home() / ".suno_auto.json"
 @dataclass
 class Config:
     anthropic_api_key: str = ""
+    pixabay_api_key: str = ""
     korean_songs: int = 3
     english_songs: int = 3
     instrumental_songs: int = 0
-    vocal_pick: str = "longer"  # "longer", "shorter", "both"
+    vocal_pick: str = "longer"  # "longer", "shorter", "random", "both"
     pipeline_scope: str = "songs"  # "songs", "videos", "upload"
     youtube_client_secrets: str = ""
     youtube_playlist_id: str = ""

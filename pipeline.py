@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from config import Config
-from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info
+from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image
 from media_proc import make_video
 import suno_bot
 from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser
@@ -40,9 +40,15 @@ class Pipeline:
         # 중단 플래그를 suno_bot에 전달
         suno_bot.stop_flag = stop_event
 
-        # 이미지 없으면 곡만 가능
+        # 이미지 없으면 Pixabay에서 자동 다운로드 시도
         if not image_path and scope in ("videos", "upload"):
-            scope = "songs"
+            if cfg.pixabay_api_key:
+                dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key,
+                                          Path(cfg.output_dir) / "images")
+                if dl:
+                    image_path = dl
+            if not image_path:
+                scope = "songs"  # 이미지 못 구하면 곡만
 
         def _progress(step: str, current: int, total: int) -> None:
             if progress_callback:

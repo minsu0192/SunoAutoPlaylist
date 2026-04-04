@@ -135,12 +135,16 @@ def _download_both(actions: dict) -> None:
 
 
 def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
+    import random
     if not files or pick == "both" or len(files) < 2:
         return files
     sorted_by_size = sorted(files, key=lambda p: p.stat().st_size)
     if pick == "shorter":
         kept, rest = sorted_by_size[0], sorted_by_size[1:]
-    else:
+    elif pick == "random":
+        kept = random.choice(files)
+        rest = [f for f in files if f != kept]
+    else:  # "longer"
         kept, rest = sorted_by_size[-1], sorted_by_size[:-1]
     for f in rest:
         try:
