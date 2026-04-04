@@ -63,30 +63,18 @@ def load_actions() -> dict:
 
 
 def _click(x: int, y: int, delay: float = 0.3) -> None:
-    """클릭. CG 가능하면 네이티브, 아니면 pyautogui."""
+    """pyautogui로 이동 + 클릭. 듀얼 모니터/Retina에서 가장 안정적."""
     _check_stop()
-    if _USE_CG:
-        point = CGPointMake(float(x), float(y))
-        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft))
-        time.sleep(0.1)
-        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft))
-        time.sleep(0.03)
-        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft))
-    else:
-        pyautogui.moveTo(x, y, duration=0.1)
-        time.sleep(0.05)
-        pyautogui.click()
+    pyautogui.moveTo(x, y, duration=0.1)
+    time.sleep(0.1)
+    pyautogui.click()
     time.sleep(delay)
 
 
 def _hover(x: int, y: int, delay: float = 0.4) -> None:
     """호버 (클릭 안 함)."""
     _check_stop()
-    if _USE_CG:
-        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
-            None, kCGEventMouseMoved, CGPointMake(float(x), float(y)), kCGMouseButtonLeft))
-    else:
-        pyautogui.moveTo(x, y, duration=0.1)
+    pyautogui.moveTo(x, y, duration=0.1)
     time.sleep(delay)
 
 
