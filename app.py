@@ -526,6 +526,8 @@ class App(ctk.CTk):
             return self._on_settings()
         if self._running:
             return messagebox.showinfo("안내", "실행 중에는 학습할 수 없습니다.")
+        # 학습도 마우스 위치를 읽으므로 접근성 불필요하지만 일관성 위해 체크
+        # (learn.py는 pyautogui.position()만 사용하므로 실제로는 필요없음)
         self._running = True
         self._btn_run.configure(state="disabled")
         self._progress_label.configure(text="UI 학습 중...")
@@ -546,6 +548,20 @@ class App(ctk.CTk):
             return self._on_settings()
         if not ACTIONS_FILE.exists():
             return messagebox.showwarning("학습 필요", "UI 학습을 먼저 하세요.")
+
+        # 접근성 권한 체크 (실제 마우스 움직임 테스트)
+        from suno_bot import check_accessibility
+        if not check_accessibility():
+            messagebox.showerror("접근성 권한 없음",
+                "마우스를 제어할 수 없습니다!\n\n"
+                "시스템 설정 → 개인정보 보호 및 보안 → 접근성\n"
+                "→ '수노자동화' 앱을 추가하고 켜주세요.\n\n"
+                "이미 있으면 삭제 후 다시 추가하세요.\n"
+                "추가 후 앱을 재시작하세요.")
+            subprocess.Popen(["open",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+            return
+
         if self._running:
             return messagebox.showinfo("안내", "이미 실행 중입니다.")
 

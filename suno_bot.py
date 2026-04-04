@@ -195,13 +195,24 @@ def focus_chrome() -> None:
 
 
 def check_accessibility() -> bool:
-    """클릭이 동작하는지 테스트."""
-    if _USE_CG:
-        return True
+    """실제로 마우스를 1px 움직여서 접근성 권한이 있는지 확인."""
     try:
-        pos = pyautogui.position()
-        pyautogui.moveTo(pos[0], pos[1])
-        return True
+        before = pyautogui.position()
+        tx, ty = before[0] + 1, before[1] + 1
+        if _USE_CG:
+            CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
+                None, kCGEventMouseMoved, CGPointMake(float(tx), float(ty)), kCGMouseButtonLeft))
+        else:
+            pyautogui.moveTo(tx, ty)
+        time.sleep(0.15)
+        after = pyautogui.position()
+        # 원래 위치로 복귀
+        if _USE_CG:
+            CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
+                None, kCGEventMouseMoved, CGPointMake(float(before[0]), float(before[1])), kCGMouseButtonLeft))
+        else:
+            pyautogui.moveTo(before[0], before[1])
+        return after != before
     except Exception:
         return False
 
