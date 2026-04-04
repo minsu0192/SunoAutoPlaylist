@@ -122,11 +122,11 @@ def _wait_for_downloads(d: Path, before: set[Path], expected: int = 2, timeout: 
         _check_stop()
         downloading = list(d.glob("*.crdownload"))
         after = _snapshot_mp3s(d)
-        new = sorted(after - before, key=lambda p: p.stat().st_mtime)
+        new = sorted(after - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
         if len(new) >= expected and not downloading:
             return new
         time.sleep(1)
-    return sorted(_snapshot_mp3s(d) - before, key=lambda p: p.stat().st_mtime)
+    return sorted(_snapshot_mp3s(d) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
 
 def _download_one(actions: dict, dot_key: str, dl_key: str, mp3_key: str) -> None:
@@ -262,7 +262,11 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
 
+    # Advanced → Simple 전환 (토글 상태 초기화 보장)
+    _click(*_coord(actions, "advanced_tab") if "advanced_tab" in actions
+           else _coord(actions, "simple_tab"), delay=0.2)
     _click(*_coord(actions, "simple_tab"), delay=0.3)
+    # 이제 Instrumental 토글은 항상 OFF 상태 → ON으로 전환
     _click(*_coord(actions, "instrumental_toggle"), delay=0.3)
     if description and "song_desc_input" in actions:
         _clear_and_type(*_coord(actions, "song_desc_input"), description)

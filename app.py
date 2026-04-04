@@ -537,8 +537,10 @@ class App(ctk.CTk):
                 start_learn()
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("학습 오류", str(e)))
-            self._running = False
-            self.after(0, lambda: self._btn_run.configure(state="normal"))
+            def _learn_done():
+                self._running = False
+                self._btn_run.configure(state="normal")
+            self.after(0, _learn_done)
             self.after(0, self._refresh)
         threading.Thread(target=_run, daemon=True).start()
 
@@ -577,7 +579,7 @@ class App(ctk.CTk):
         total = self._config.korean_songs + self._config.english_songs + self._config.instrumental_songs
         if total == 0:
             return messagebox.showwarning("설정 필요", "곡 수를 1 이상으로 설정하세요.")
-        scope = {"songs": "곡 생성만", "videos": "곡+영상", "upload": "곡+영상+YouTube"}[self._config.pipeline_scope]
+        scope = {"songs": "곡 생성만", "videos": "곡+영상", "upload": "곡+영상+YouTube"}.get(self._config.pipeline_scope, "곡 생성만")
         if not messagebox.askokcancel("실행",
             f"키워드: {item['keyword']}\n총 {total}곡 | 범위: {scope}\n\n"
             f"Chrome에서 suno.com 로그인 필요.\n실행?"):
@@ -614,11 +616,8 @@ class App(ctk.CTk):
 
     def _on_stop(self):
         self._stop_flag.set()
-        self._running = False
-        self._btn_run.configure(state="normal")
         self._btn_stop.configure(state="disabled")
-        self._progress_label.configure(text="중단됨")
-        self._progress_bar.set(0)
+        self._progress_label.configure(text="중단 중...")
 
     def _on_done(self):
         self._running = False

@@ -234,6 +234,8 @@ class Pipeline:
 
         _progress("YouTube 업로드 중...", 5, total_steps)
         _check_stop()
+        if yt_info is None:
+            yt_info = {"title": keyword, "description": keyword, "tags": [keyword]}
         uploader = YouTubeUploader()
 
         urls: list[str] = []

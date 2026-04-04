@@ -31,6 +31,7 @@ pyinstaller \
   --add-data "learn.py:." \
   --hidden-import "tkinterdnd2" \
   --collect-all "tkinterdnd2" \
+  --collect-all "customtkinter" \
   --hidden-import "pyautogui" \
   --hidden-import "pyperclip" \
   --hidden-import "anthropic" \
