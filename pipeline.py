@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -76,35 +77,63 @@ class Pipeline:
         _progress("가사/스타일 생성 중...", 2, total_steps)
         _check_stop()
 
-        sessions: list[dict] = []
-        for i in range(kr_sessions):
-            _check_stop()
-            content = generate_song_content(keyword, "korean", i, cfg.anthropic_api_key)
-            content["title"] = f"{keyword} Korean Ver.{i + 1}"
-            sessions.append(content)
-
-        for i in range(en_sessions):
-            _check_stop()
-            content = generate_song_content(keyword, "english", i, cfg.anthropic_api_key)
-            content["title"] = f"{keyword} English Ver.{i + 1}"
-            sessions.append(content)
-
+        # 가사/스타일/설명을 병렬 생성 (Claude API 호출이 느리므로)
+        sessions: list[dict] = [None] * (kr_sessions + en_sessions)
         inst_desc = ""
+        yt_info = None
+
+        def _gen_kr(i):
+            c = generate_song_content(keyword, "korean", i, cfg.anthropic_api_key)
+            c["title"] = f"{keyword} Korean Ver.{i + 1}"
+            return ("kr", i, c)
+
+        def _gen_en(i):
+            c = generate_song_content(keyword, "english", i, cfg.anthropic_api_key)
+            c["title"] = f"{keyword} English Ver.{i + 1}"
+            return ("en", i, c)
+
+        def _gen_inst():
+            return generate_instrumental_description(keyword, cfg.anthropic_api_key)
+
+        def _gen_yt():
+            total_songs = cfg.korean_songs + cfg.english_songs + cfg.instrumental_songs
+            return generate_youtube_info(keyword, total_songs, cfg.anthropic_api_key)
+
+        # Instrumental 학습 체크
         if inst_sessions > 0:
             actions = load_actions()
             inst_required = ["simple_tab", "instrumental_toggle", "simple_create_btn"]
             inst_missing = [k for k in inst_required if k not in actions]
             if inst_missing:
-                raise RuntimeError(
-                    f"Instrumental 학습 미완료: {inst_missing}\n"
-                    "UI 학습 3단계를 완료하거나 Instrumental 곡 수를 0으로 설정하세요.")
-            inst_desc = generate_instrumental_description(keyword, cfg.anthropic_api_key)
+                raise RuntimeError(f"Instrumental 학습 미완료: {inst_missing}")
 
-        yt_info = None
-        if scope == "upload":
-            _check_stop()
-            total_songs = cfg.korean_songs + cfg.english_songs + cfg.instrumental_songs
-            yt_info = generate_youtube_info(keyword, total_songs, cfg.anthropic_api_key)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = []
+            for i in range(kr_sessions):
+                futures.append(pool.submit(_gen_kr, i))
+            for i in range(en_sessions):
+                futures.append(pool.submit(_gen_en, i))
+            if inst_sessions > 0:
+                futures.append(pool.submit(_gen_inst))
+            if scope == "upload":
+                futures.append(pool.submit(_gen_yt))
+
+            for fut in as_completed(futures):
+                _check_stop()
+                result = fut.result()
+                if isinstance(result, tuple):
+                    kind, idx, content = result
+                    if kind == "kr":
+                        sessions[idx] = content
+                    else:
+                        sessions[kr_sessions + idx] = content
+                elif isinstance(result, str):
+                    inst_desc = result
+                elif isinstance(result, dict):
+                    yt_info = result
+
+        # None 제거 (혹시 빈 슬롯)
+        sessions = [s for s in sessions if s is not None]
 
         # ── [3] Suno.com 자동화 ───────────────────────────────────
         _progress("Suno.com 준비 중...", 3, total_steps)

@@ -1,13 +1,13 @@
 """
-suno_bot.py — CoreGraphics 네이티브 이벤트로 Suno.com 자동 조작
+suno_bot.py — Suno.com 자동 조작
 
-학습 데이터: ~/.suno_actions.json
-다운로드 폴더: ~/SunoOutput/downloads/ (Chrome 실행 시 AppleScript로 설정)
+클릭: CoreGraphics 네이티브 → 실패 시 pyautogui fallback
 """
 
 from __future__ import annotations
 
 import json
+import random
 import subprocess
 import threading
 import time
@@ -15,81 +15,94 @@ from pathlib import Path
 
 import pyautogui
 import pyperclip
-from Quartz import (
-    CGEventCreateMouseEvent,
-    CGEventPost,
-    CGPointMake,
-    kCGEventLeftMouseDown,
-    kCGEventLeftMouseUp,
-    kCGEventMouseMoved,
-    kCGMouseButtonLeft,
-    kCGHIDEventTap,
-)
 
-pyautogui.FAILSAFE = True  # 마우스를 왼쪽 상단 모서리로 보내면 비상 정지
+# CoreGraphics 시도 — 번들/권한 문제면 pyautogui fallback
+_USE_CG = False
+try:
+    from Quartz import (
+        CGEventCreateMouseEvent,
+        CGEventPost,
+        CGPointMake,
+        kCGEventLeftMouseDown,
+        kCGEventLeftMouseUp,
+        kCGEventMouseMoved,
+        kCGMouseButtonLeft,
+        kCGHIDEventTap,
+    )
+    # 실제 이벤트 생성 테스트
+    _test = CGEventCreateMouseEvent(None, kCGEventMouseMoved, CGPointMake(0, 0), kCGMouseButtonLeft)
+    if _test is not None:
+        _USE_CG = True
+except Exception:
+    pass
+
+pyautogui.FAILSAFE = True
+pyautogui.PAUSE = 0.05  # pyautogui 기본 딜레이 줄이기
 
 ACTIONS_FILE = Path.home() / ".suno_actions.json"
 SUNO_URL = "https://suno.com/create"
 SUNO_DL_DIR = Path.home() / "SunoOutput" / "downloads"
 
-# 중단 플래그 (pipeline에서 설정)
 stop_flag: threading.Event | None = None
 
 
 def _check_stop():
-    """중단 플래그 확인. 설정되어 있으면 예외 발생."""
     if stop_flag and stop_flag.is_set():
         raise RuntimeError("사용자에 의해 중단됨")
 
 
 # ------------------------------------------------------------------ #
-# 내부 헬퍼                                                            #
+# 클릭/호버                                                            #
 # ------------------------------------------------------------------ #
 
 def load_actions() -> dict:
     if not ACTIONS_FILE.exists():
-        raise FileNotFoundError("UI 학습 파일이 없습니다. 'UI 학습'을 먼저 하세요.")
+        raise FileNotFoundError("UI 학습 파일이 없습니다.")
     with ACTIONS_FILE.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def _click(x: int, y: int, delay: float = 0.3) -> None:
-    """CoreGraphics 네이티브 클릭."""
+    """클릭. CG 가능하면 네이티브, 아니면 pyautogui."""
     _check_stop()
-    point = CGPointMake(float(x), float(y))
-    move = CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft)
-    CGEventPost(kCGHIDEventTap, move)
-    time.sleep(0.15)
-    down = CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft)
-    CGEventPost(kCGHIDEventTap, down)
-    time.sleep(0.05)
-    up = CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft)
-    CGEventPost(kCGHIDEventTap, up)
+    if _USE_CG:
+        point = CGPointMake(float(x), float(y))
+        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft))
+        time.sleep(0.1)
+        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft))
+        time.sleep(0.03)
+        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft))
+    else:
+        pyautogui.moveTo(x, y, duration=0.1)
+        time.sleep(0.05)
+        pyautogui.click()
     time.sleep(delay)
 
 
-def _hover(x: int, y: int, delay: float = 0.5) -> None:
-    """CoreGraphics 네이티브 hover (클릭 안 함)."""
+def _hover(x: int, y: int, delay: float = 0.4) -> None:
+    """호버 (클릭 안 함)."""
     _check_stop()
-    point = CGPointMake(float(x), float(y))
-    move = CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft)
-    CGEventPost(kCGHIDEventTap, move)
+    if _USE_CG:
+        CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
+            None, kCGEventMouseMoved, CGPointMake(float(x), float(y)), kCGMouseButtonLeft))
+    else:
+        pyautogui.moveTo(x, y, duration=0.1)
     time.sleep(delay)
 
 
 def _type_text(text: str) -> None:
     pyperclip.copy(text)
-    time.sleep(0.1)
+    time.sleep(0.05)
     pyautogui.hotkey("command", "v")
-    time.sleep(0.3)
+    time.sleep(0.15)
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
-    _click(x, y)
+    _click(x, y, delay=0.15)
     pyautogui.hotkey("command", "a")
-    time.sleep(0.1)
+    time.sleep(0.05)
     pyautogui.press("delete")
-    time.sleep(0.1)
+    time.sleep(0.05)
     _type_text(text)
 
 
@@ -98,54 +111,46 @@ def _coord(actions: dict, key: str) -> tuple[int, int]:
     return int(xy[0]), int(xy[1])
 
 
-def _snapshot_mp3s(directory: Path) -> set[Path]:
-    return set(directory.glob("*.mp3"))
+def _snapshot_mp3s(d: Path) -> set[Path]:
+    return set(d.glob("*.mp3"))
 
 
-def _wait_for_downloads(directory: Path, before: set[Path], expected: int = 2,
-                         timeout: int = 30) -> list[Path]:
-    """다운로드 완료를 폴링으로 대기. .crdownload 파일이 사라질 때까지."""
+def _wait_for_downloads(d: Path, before: set[Path], expected: int = 2, timeout: int = 30) -> list[Path]:
+    """다운로드 완료 폴링."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         _check_stop()
-        # .crdownload 파일이 있으면 아직 다운로드 중
-        downloading = list(directory.glob("*.crdownload"))
-        after = _snapshot_mp3s(directory)
-        new_files = sorted(after - before, key=lambda p: p.stat().st_mtime)
-        if len(new_files) >= expected and not downloading:
-            return new_files
-        time.sleep(2)
-    # 타임아웃 — 있는 만큼 반환
-    after = _snapshot_mp3s(directory)
-    return sorted(after - before, key=lambda p: p.stat().st_mtime)
+        downloading = list(d.glob("*.crdownload"))
+        after = _snapshot_mp3s(d)
+        new = sorted(after - before, key=lambda p: p.stat().st_mtime)
+        if len(new) >= expected and not downloading:
+            return new
+        time.sleep(1)
+    return sorted(_snapshot_mp3s(d) - before, key=lambda p: p.stat().st_mtime)
 
 
 def _download_one(actions: dict, dot_key: str, dl_key: str, mp3_key: str) -> None:
-    """곡 1개 다운로드: ... 클릭 → Download hover → MP3 클릭."""
-    _click(*_coord(actions, dot_key), delay=0.5)
-    _hover(*_coord(actions, dl_key), delay=0.5)
-    _click(*_coord(actions, mp3_key), delay=2.0)
+    _click(*_coord(actions, dot_key), delay=0.4)
+    _hover(*_coord(actions, dl_key), delay=0.4)
+    _click(*_coord(actions, mp3_key), delay=1.5)
 
 
 def _download_both(actions: dict) -> None:
-    # 첫째 곡: song_dot_btn → download_item → mp3_btn
     _download_one(actions, "song_dot_btn", "download_item", "mp3_btn")
-    # 둘째 곡: song_dot_btn_2 → download_item_2 → mp3_btn_2
     _download_one(actions, "song_dot_btn_2", "download_item_2", "mp3_btn_2")
 
 
 def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
-    import random
     if not files or pick == "both" or len(files) < 2:
         return files
-    sorted_by_size = sorted(files, key=lambda p: p.stat().st_size)
+    s = sorted(files, key=lambda p: p.stat().st_size)
     if pick == "shorter":
-        kept, rest = sorted_by_size[0], sorted_by_size[1:]
+        kept, rest = s[0], s[1:]
     elif pick == "random":
         kept = random.choice(files)
         rest = [f for f in files if f != kept]
-    else:  # "longer"
-        kept, rest = sorted_by_size[-1], sorted_by_size[:-1]
+    else:
+        kept, rest = s[-1], s[:-1]
     for f in rest:
         try:
             f.unlink()
@@ -154,24 +159,21 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
     return [kept]
 
 
-def _wait_for_song(timeout: int = 180) -> None:
-    """곡 생성 대기. 10초 단위로 중단 플래그 체크."""
+def _wait_for_song(timeout: int = 120) -> None:
+    """곡 생성 대기. 5초 단위 중단 체크."""
     waited = 0
     while waited < timeout:
         _check_stop()
-        time.sleep(10)
-        waited += 10
+        time.sleep(5)
+        waited += 5
 
 
 # ------------------------------------------------------------------ #
-# 브라우저 관리                                                         #
+# 브라우저                                                              #
 # ------------------------------------------------------------------ #
 
 def setup_browser() -> None:
-    """파이프라인 시작 전 1회 호출. Chrome 다운로드 경로를 AppleScript로 설정."""
     SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Chrome Preferences 수정 (Chrome이 닫혀있을 때 반영)
     prefs_file = Path.home() / "Library/Application Support/Google/Chrome/Default/Preferences"
     if prefs_file.exists():
         try:
@@ -181,30 +183,25 @@ def setup_browser() -> None:
             prefs_file.write_text(json.dumps(prefs, ensure_ascii=False), encoding="utf-8")
         except Exception:
             pass
-
-    # Chrome이 이미 열려있으면 AppleScript로 다운로드 경로 변경
-    # chrome://settings 에서 변경하는 대신, 이미 Preferences에 쓴 것을 반영하도록
-    # Chrome을 새 탭으로 suno.com 열기
-    subprocess.Popen(
-        ["open", "-a", "Google Chrome", SUNO_URL],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    subprocess.Popen(["open", "-a", "Google Chrome", SUNO_URL],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(3)
 
 
 def focus_chrome() -> None:
-    subprocess.Popen(
-        ["open", "-a", "Google Chrome"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    time.sleep(0.5)
+    subprocess.Popen(["open", "-a", "Google Chrome"],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.3)
 
 
 def check_accessibility() -> bool:
+    """클릭이 동작하는지 테스트."""
+    if _USE_CG:
+        return True
     try:
-        pt = CGPointMake(0.0, 0.0)
-        evt = CGEventCreateMouseEvent(None, kCGEventMouseMoved, pt, kCGMouseButtonLeft)
-        return evt is not None
+        pos = pyautogui.position()
+        pyautogui.moveTo(pos[0], pos[1])
+        return True
     except Exception:
         return False
 
@@ -214,7 +211,6 @@ def check_accessibility() -> bool:
 # ------------------------------------------------------------------ #
 
 def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "longer") -> list[Path]:
-    """보컬곡 세션: Advanced 모드. 2곡 생성 후 pick 기준으로 선택."""
     actions = load_actions()
     required = ["advanced_tab", "lyrics_input", "style_input",
                 "title_input", "create_btn",
@@ -224,52 +220,46 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     if missing:
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
-    download_dir = SUNO_DL_DIR
-    download_dir.mkdir(parents=True, exist_ok=True)
-
+    dl = SUNO_DL_DIR
+    dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
 
-    _click(*_coord(actions, "advanced_tab"), delay=0.5)
+    _click(*_coord(actions, "advanced_tab"), delay=0.3)
     _clear_and_type(*_coord(actions, "lyrics_input"), lyrics)
     _clear_and_type(*_coord(actions, "style_input"), style)
     _clear_and_type(*_coord(actions, "title_input"), title)
-    _click(*_coord(actions, "create_btn"), delay=1.0)
+    _click(*_coord(actions, "create_btn"), delay=0.5)
 
-    # 곡 생성 대기 (10초 단위로 중단 체크, 최대 180초)
-    _wait_for_song(timeout=180)
+    _wait_for_song(timeout=120)
 
-    # 다운로드 (폴링 방식)
-    before = _snapshot_mp3s(download_dir)
+    before = _snapshot_mp3s(dl)
     _download_both(actions)
-    new_files = _wait_for_downloads(download_dir, before, expected=2, timeout=30)
-
-    return _pick_mp3s(new_files[:2], vocal_pick)
+    new = _wait_for_downloads(dl, before, expected=2, timeout=30)
+    return _pick_mp3s(new[:2], vocal_pick)
 
 
 def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Path]:
-    """Instrumental 세션: Simple 모드. 2곡 생성."""
     actions = load_actions()
     required = ["simple_tab", "instrumental_toggle", "simple_create_btn",
-                "song_dot_btn", "song_dot_btn_2", "download_item", "mp3_btn"]
+                "song_dot_btn", "download_item", "mp3_btn",
+                "song_dot_btn_2", "download_item_2", "mp3_btn_2"]
     missing = [k for k in required if k not in actions]
     if missing:
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
-    download_dir = SUNO_DL_DIR
-    download_dir.mkdir(parents=True, exist_ok=True)
-
+    dl = SUNO_DL_DIR
+    dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
 
-    _click(*_coord(actions, "simple_tab"), delay=0.5)
-    _click(*_coord(actions, "instrumental_toggle"), delay=0.5)
+    _click(*_coord(actions, "simple_tab"), delay=0.3)
+    _click(*_coord(actions, "instrumental_toggle"), delay=0.3)
     if description and "song_desc_input" in actions:
         _clear_and_type(*_coord(actions, "song_desc_input"), description)
-    _click(*_coord(actions, "simple_create_btn"), delay=1.0)
+    _click(*_coord(actions, "simple_create_btn"), delay=0.5)
 
-    _wait_for_song(timeout=180)
+    _wait_for_song(timeout=120)
 
-    before = _snapshot_mp3s(download_dir)
+    before = _snapshot_mp3s(dl)
     _download_both(actions)
-    new_files = _wait_for_downloads(download_dir, before, expected=2, timeout=30)
-
-    return _pick_mp3s(new_files[:2], pick)
+    new = _wait_for_downloads(dl, before, expected=2, timeout=30)
+    return _pick_mp3s(new[:2], pick)
