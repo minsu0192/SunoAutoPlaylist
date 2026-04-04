@@ -34,8 +34,12 @@ class Pipeline:
     ) -> None:
         cfg = self.config
         keyword = item["keyword"]
-        image_path = Path(item["image_path"])
+        image_path = Path(item["image_path"]) if item.get("image_path") else None
         scope = cfg.pipeline_scope  # "songs" / "videos" / "upload"
+
+        # 이미지 없으면 곡만 가능
+        if not image_path and scope in ("videos", "upload"):
+            scope = "songs"
 
         def _progress(step: str, current: int, total: int) -> None:
             if progress_callback:
@@ -176,7 +180,7 @@ class Pipeline:
     # 내부 헬퍼                                                            #
     # ------------------------------------------------------------------ #
 
-    def _validate(self, cfg: Config, image_path: Path) -> None:
+    def _validate(self, cfg: Config, image_path: Path | None) -> None:
         if not cfg.anthropic_api_key:
             raise ValueError("API 키가 없습니다. 설정에서 입력하세요.")
         if not (Path.home() / ".suno_actions.json").exists():
@@ -185,7 +189,7 @@ class Pipeline:
             load_actions()
         except Exception as e:
             raise ValueError(f"UI 학습 파일 로드 실패: {e}") from e
-        if not image_path.exists():
+        if image_path and not image_path.exists():
             raise ValueError(f"이미지 없음: {image_path}")
         if cfg.korean_songs + cfg.english_songs + cfg.instrumental_songs == 0:
             raise ValueError("곡 수가 0입니다.")

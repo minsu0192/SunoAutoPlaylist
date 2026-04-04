@@ -316,16 +316,27 @@ class App(ctk.CTk):
                        fg_color="gray25", hover_color="gray35",
                        command=self._on_learn).pack(side="right", padx=4)
 
-        # ── 드롭존 ───────────────────────────────────────────
-        self._drop_frame = ctk.CTkFrame(self, corner_radius=12, fg_color="gray17",
-                                         border_width=2, border_color="gray25", height=80)
-        self._drop_frame.pack(fill="x", padx=16, pady=(12, 8))
+        # ── 키워드 입력 ───────────────────────────────────────
+        kw_frame = ctk.CTkFrame(self, fg_color="transparent")
+        kw_frame.pack(fill="x", padx=16, pady=(12, 4))
+
+        self._kw_entry = ctk.CTkEntry(kw_frame, height=36, placeholder_text="키워드 입력 (예: lofi chill, 가을 감성)")
+        self._kw_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self._kw_entry.bind("<Return>", lambda _: self._add_keyword())
+
+        ctk.CTkButton(kw_frame, text="추가", width=60, height=36, fg_color=ACCENT,
+                       hover_color="#7C3AED", command=self._add_keyword).pack(side="right")
+
+        # ── 이미지 추가 (영상 만들 때만 필요) ────────────────────
+        self._drop_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="gray17",
+                                         border_width=1, border_color="gray25", height=50)
+        self._drop_frame.pack(fill="x", padx=16, pady=(0, 8))
         self._drop_frame.pack_propagate(False)
         self._drop_frame.bind("<Button-1>", lambda _: self._pick_files())
 
         self._drop_label = ctk.CTkLabel(self._drop_frame,
-            text="클릭해서 이미지 추가 (파일명 = 키워드)",
-            font=("", 13), text_color="gray45", cursor="hand2")
+            text="이미지 추가 (영상 만들 때만 필요, 파일명 = 키워드)",
+            font=("", 11), text_color="gray40", cursor="hand2")
         self._drop_label.pack(expand=True)
         self._drop_label.bind("<Button-1>", lambda _: self._pick_files())
         self._setup_dnd()
@@ -468,8 +479,16 @@ class App(ctk.CTk):
         if added:
             self._refresh()
 
+    def _add_keyword(self):
+        kw = self._kw_entry.get().strip()
+        if not kw:
+            return
+        self._queue.add(keyword=kw)
+        self._kw_entry.delete(0, "end")
+        self._refresh()
+
     def _add_image(self, path: str):
-        self._queue.add(path, Path(path).stem)
+        self._queue.add(keyword=Path(path).stem, image_path=path)
 
     # ── 버튼 핸들러 ───────────────────────────────────────────
     def _on_delete(self):
