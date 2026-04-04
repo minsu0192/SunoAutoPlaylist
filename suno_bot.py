@@ -80,18 +80,22 @@ def _hover(x: int, y: int, delay: float = 0.4) -> None:
 
 def _type_text(text: str) -> None:
     pyperclip.copy(text)
-    time.sleep(0.05)
-    pyautogui.hotkey("command", "v")
     time.sleep(0.15)
+    pyautogui.hotkey("command", "v")
+    time.sleep(0.3)
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
-    _click(x, y, delay=0.15)
+    # 더블클릭으로 확실히 포커스 잡기
+    _click(x, y, delay=0.2)
+    _click(x, y, delay=0.2)
+    time.sleep(0.1)
     pyautogui.hotkey("command", "a")
-    time.sleep(0.05)
+    time.sleep(0.1)
     pyautogui.press("delete")
-    time.sleep(0.05)
+    time.sleep(0.1)
     _type_text(text)
+    time.sleep(0.1)
 
 
 def _coord(actions: dict, key: str) -> tuple[int, int]:
@@ -179,7 +183,7 @@ def setup_browser() -> None:
 def focus_chrome() -> None:
     subprocess.Popen(["open", "-a", "Google Chrome"],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(0.3)
+    time.sleep(1)
 
 
 def check_accessibility() -> bool:
