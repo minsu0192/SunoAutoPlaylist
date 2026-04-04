@@ -183,6 +183,11 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 300) -> list
     for attempt in range(4):
         _check_stop()
 
+        # 혹시 팝업이 열려있으면 닫기
+        if "popup_close_btn" in actions:
+            _click(*_coord(actions, "popup_close_btn"), delay=0.3)
+            time.sleep(0.5)
+
         # 다운로드 시도
         _download_both(actions)
         new = _wait_for_downloads(dl_dir, before, expected=2, timeout=20)

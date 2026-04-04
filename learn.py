@@ -132,6 +132,16 @@ def start_learn():
         _alert("1단계만 저장됨")
         return
 
+    # 팝업 X 버튼 (곡 클릭하면 뜨는 오른쪽 패널의 X)
+    pos = _record_with_prep(
+        "팝업 X 버튼 (오른쪽 위)",
+        "아무 곡을 클릭해서 오른쪽 패널을 여세요",
+    )
+    if pos is None:
+        save_actions(actions)
+        return
+    actions["popup_close_btn"] = pos
+
     # ── 첫째 곡 다운로드 학습 ──
     btn = _dialog(
         "【첫째 곡 다운로드 학습】\\n\\n"
