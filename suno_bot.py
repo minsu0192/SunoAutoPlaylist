@@ -173,13 +173,13 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 300) -> list
     """
     before = _snapshot_mp3s(dl_dir)
 
-    # 최소 60초는 대기 (Suno 생성 시간)
-    for _ in range(12):  # 60초 = 5초 × 12
+    # 최소 120초 대기 (Suno 생성 시간)
+    for _ in range(24):  # 120초 = 5초 × 24
         _check_stop()
         time.sleep(5)
 
     # 이후 30초 간격으로 다운로드 시도 (최대 4번 = 추가 120초)
-    total_waited = 60
+    total_waited = 120
     for attempt in range(4):
         _check_stop()
 
