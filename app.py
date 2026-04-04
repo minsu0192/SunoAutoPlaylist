@@ -461,7 +461,7 @@ class App(ctk.CTk):
             self._progress_bar.set(0)
             pending = len(self._queue.get_pending())
             self._progress_label.configure(
-                text=f"{pending}개 대기" if pending else "이미지를 추가하세요")
+                text=f"{pending}개 대기" if pending else "키워드를 입력하세요")
 
     def _select_card(self, card: QueueCard):
         if self._selected_card:

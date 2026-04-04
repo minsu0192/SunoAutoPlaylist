@@ -49,12 +49,12 @@ PLIST="dist/수노자동화.app/Contents/Info.plist"
 xattr -cr dist/수노자동화.app 2>/dev/null || true
 codesign -s - --force --deep dist/수노자동화.app 2>/dev/null || true
 
-# 바탕화면에 복사 (기존 것 삭제 후)
-rm -rf ~/Desktop/수노자동화.app 2>/dev/null || true
-cp -R dist/수노자동화.app ~/Desktop/수노자동화.app
+# Applications에 복사 (바탕화면은 iCloud 중복 생김)
+rm -rf /Applications/수노자동화.app 2>/dev/null || true
+cp -R dist/수노자동화.app /Applications/수노자동화.app
 
 echo ""
 echo "=================================================="
 echo "✅ 빌드 완료: dist/수노자동화.app"
-echo "  → 바탕화면에도 복사됨: ~/Desktop/수노자동화.app"
+echo "  → /Applications/수노자동화.app 에 설치됨"
 echo "=================================================="

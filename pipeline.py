@@ -167,17 +167,12 @@ class Pipeline:
         all_mp3s = vocal_mp3s + inst_mp3s
 
         if not all_mp3s:
-            # 다운로드 디렉토리에서도 확인 (fallback)
-            dl_dir = Path.home() / "SunoOutput" / "downloads"
-            also_check = Path.home() / "Downloads"
-            for d in [dl_dir, also_check]:
-                if d.exists():
-                    recent = sorted(d.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
-                    if recent:
-                        all_mp3s = recent[:cfg.korean_songs + cfg.english_songs + cfg.instrumental_songs]
-                        break
-            if not all_mp3s:
-                raise RuntimeError("다운로드된 MP3 파일이 없습니다. UI 학습을 다시 하세요.")
+            raise RuntimeError(
+                "다운로드된 MP3 파일이 없습니다.\n"
+                "1. Chrome에서 suno.com 로그인 확인\n"
+                "2. UI 학습이 정확한지 확인\n"
+                "3. 접근성 권한이 켜져있는지 확인"
+            )
 
         # ── scope: songs → 여기서 끝 ──────────────────────────────
         if scope == "songs":
