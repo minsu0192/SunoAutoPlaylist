@@ -165,13 +165,41 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
     return [kept]
 
 
-def _wait_for_song(timeout: int = 120) -> None:
-    """곡 생성 대기. 5초 단위 중단 체크."""
-    waited = 0
-    while waited < timeout:
+def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 300) -> list[Path]:
+    """
+    곡 생성 대기 + 다운로드를 합쳐서 처리.
+    60초 기본 대기 후, 다운로드 시도 → 실패하면 30초 더 기다리고 재시도.
+    최대 max_wait초까지 반복.
+    """
+    before = _snapshot_mp3s(dl_dir)
+
+    # 최소 60초는 대기 (Suno 생성 시간)
+    for _ in range(12):  # 60초 = 5초 × 12
         _check_stop()
         time.sleep(5)
-        waited += 5
+
+    # 이후 30초 간격으로 다운로드 시도 (최대 4번 = 추가 120초)
+    total_waited = 60
+    for attempt in range(4):
+        _check_stop()
+
+        # 다운로드 시도
+        _download_both(actions)
+        new = _wait_for_downloads(dl_dir, before, expected=2, timeout=20)
+
+        if new:
+            return new
+
+        # 못 받았으면 더 기다리기
+        total_waited += 30
+        if total_waited >= max_wait:
+            break
+        for _ in range(6):  # 30초 = 5초 × 6
+            _check_stop()
+            time.sleep(5)
+
+    # 마지막으로 한번 더 확인
+    return sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
 
 # ------------------------------------------------------------------ #
@@ -247,11 +275,8 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     _clear_and_type(*_coord(actions, "title_input"), title)
     _click(*_coord(actions, "create_btn"), delay=0.5)
 
-    _wait_for_song(timeout=120)
-
-    before = _snapshot_mp3s(dl)
-    _download_both(actions)
-    new = _wait_for_downloads(dl, before, expected=2, timeout=30)
+    # 곡 생성 대기 + 다운로드 (재시도 포함)
+    new = _wait_and_download(actions, dl)
     return _pick_mp3s(new[:2], vocal_pick)
 
 
@@ -278,9 +303,6 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
         _clear_and_type(*_coord(actions, "song_desc_input"), description)
     _click(*_coord(actions, "simple_create_btn"), delay=0.5)
 
-    _wait_for_song(timeout=120)
-
-    before = _snapshot_mp3s(dl)
-    _download_both(actions)
-    new = _wait_for_downloads(dl, before, expected=2, timeout=30)
+    # 곡 생성 대기 + 다운로드 (재시도 포함)
+    new = _wait_and_download(actions, dl)
     return _pick_mp3s(new[:2], pick)
