@@ -68,8 +68,11 @@ class Pipeline:
         _progress("검증 중...", 1, total_steps)
         self._validate(cfg, image_path)
 
-        kr_sessions = math.ceil(cfg.korean_songs / 2) if cfg.korean_songs else 0
-        en_sessions = math.ceil(cfg.english_songs / 2) if cfg.english_songs else 0
+        # vocal_pick이 both면 세션당 2곡, 아니면 세션당 1곡
+        songs_per_vocal = 2 if cfg.vocal_pick == "both" else 1
+        kr_sessions = math.ceil(cfg.korean_songs / songs_per_vocal) if cfg.korean_songs else 0
+        en_sessions = math.ceil(cfg.english_songs / songs_per_vocal) if cfg.english_songs else 0
+        # instrumental은 항상 2곡 사용
         inst_sessions = math.ceil(cfg.instrumental_songs / 2) if cfg.instrumental_songs else 0
         total_sessions = kr_sessions + en_sessions + inst_sessions
 
