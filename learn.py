@@ -132,39 +132,75 @@ def start_learn():
         _alert("1단계만 저장됨")
         return
 
-    # 첫째 곡 ...
-    pos = _record("맨 위에 있는 곡의 ... 버튼 (첫째 곡)")
+    # ── 첫째 곡 다운로드 학습 ──
+    btn = _dialog(
+        "【첫째 곡 다운로드 학습】\\n\\n"
+        "맨 위 곡(첫째 곡)으로 학습합니다.\\n"
+        "준비되면 '다음'",
+        ["취소", "다음"], "다음",
+    )
+    if btn != "다음":
+        save_actions(actions)
+        return
+
+    pos = _record("첫째 곡의 ... 버튼")
     if pos is None:
         save_actions(actions)
         return
     actions["song_dot_btn"] = pos
 
-    # 둘째 곡 ...
-    pos = _record("바로 아래 곡의 ... 버튼 (둘째 곡)")
-    if pos is None:
-        save_actions(actions)
-        return
-    actions["song_dot_btn_2"] = pos
-
-    # Download — ... 메뉴를 먼저 열고
     pos = _record_with_prep(
-        "Download 항목",
-        "아무 곡의 ... 버튼을 클릭해서 메뉴를 여세요",
+        "Download (첫째 곡)",
+        "첫째 곡의 ... 버튼을 클릭해서 메뉴를 여세요",
     )
     if pos is None:
         save_actions(actions)
         return
     actions["download_item"] = pos
 
-    # MP3 — ... → Download 올리기 → MP3
     pos = _record_with_prep(
-        "MP3 버튼",
-        "... 클릭 → Download 위에 마우스 올리기",
+        "MP3 (첫째 곡)",
+        "첫째 곡의 ... 클릭 → Download 위에 마우스 올리기",
     )
     if pos is None:
         save_actions(actions)
         return
     actions["mp3_btn"] = pos
+
+    # ── 둘째 곡 다운로드 학습 ──
+    btn = _dialog(
+        "【둘째 곡 다운로드 학습】\\n\\n"
+        "바로 아래 곡(둘째 곡)으로 학습합니다.\\n"
+        "준비되면 '다음'",
+        ["취소", "다음"], "다음",
+    )
+    if btn != "다음":
+        save_actions(actions)
+        return
+
+    pos = _record("둘째 곡의 ... 버튼")
+    if pos is None:
+        save_actions(actions)
+        return
+    actions["song_dot_btn_2"] = pos
+
+    pos = _record_with_prep(
+        "Download (둘째 곡)",
+        "둘째 곡의 ... 버튼을 클릭해서 메뉴를 여세요",
+    )
+    if pos is None:
+        save_actions(actions)
+        return
+    actions["download_item_2"] = pos
+
+    pos = _record_with_prep(
+        "MP3 (둘째 곡)",
+        "둘째 곡의 ... 클릭 → Download 위에 마우스 올리기",
+    )
+    if pos is None:
+        save_actions(actions)
+        return
+    actions["mp3_btn_2"] = pos
 
     # ─── 3단계: Simple + Instrumental ─────────────────────────
     btn = _dialog(

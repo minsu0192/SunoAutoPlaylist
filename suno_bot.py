@@ -120,15 +120,18 @@ def _wait_for_downloads(directory: Path, before: set[Path], expected: int = 2,
     return sorted(after - before, key=lambda p: p.stat().st_mtime)
 
 
-def _download_one(actions: dict, dot_key: str) -> None:
+def _download_one(actions: dict, dot_key: str, dl_key: str, mp3_key: str) -> None:
+    """곡 1개 다운로드: ... 클릭 → Download hover → MP3 클릭."""
     _click(*_coord(actions, dot_key), delay=0.5)
-    _hover(*_coord(actions, "download_item"), delay=0.5)
-    _click(*_coord(actions, "mp3_btn"), delay=2.0)
+    _hover(*_coord(actions, dl_key), delay=0.5)
+    _click(*_coord(actions, mp3_key), delay=2.0)
 
 
 def _download_both(actions: dict) -> None:
-    _download_one(actions, "song_dot_btn")
-    _download_one(actions, "song_dot_btn_2")
+    # 첫째 곡: song_dot_btn → download_item → mp3_btn
+    _download_one(actions, "song_dot_btn", "download_item", "mp3_btn")
+    # 둘째 곡: song_dot_btn_2 → download_item_2 → mp3_btn_2
+    _download_one(actions, "song_dot_btn_2", "download_item_2", "mp3_btn_2")
 
 
 def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
@@ -210,8 +213,9 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     """보컬곡 세션: Advanced 모드. 2곡 생성 후 pick 기준으로 선택."""
     actions = load_actions()
     required = ["advanced_tab", "lyrics_input", "style_input",
-                "title_input", "create_btn", "song_dot_btn", "song_dot_btn_2",
-                "download_item", "mp3_btn"]
+                "title_input", "create_btn",
+                "song_dot_btn", "download_item", "mp3_btn",
+                "song_dot_btn_2", "download_item_2", "mp3_btn_2"]
     missing = [k for k in required if k not in actions]
     if missing:
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
