@@ -78,24 +78,44 @@ def _hover(x: int, y: int, delay: float = 0.4) -> None:
     time.sleep(delay)
 
 
+def _keystroke(key: str, using: str = "") -> None:
+    """osascript로 키 입력. pyautogui보다 확실히 동작함."""
+    if using:
+        cmd = f'tell application "System Events" to keystroke "{key}" using {using}'
+    else:
+        cmd = f'tell application "System Events" to keystroke "{key}"'
+    subprocess.run(["osascript", "-e", cmd], capture_output=True, timeout=5)
+    time.sleep(0.1)
+
+
+def _key_code(code: int, using: str = "") -> None:
+    """osascript로 키코드 입력 (delete, return 등)."""
+    if using:
+        cmd = f'tell application "System Events" to key code {code} using {using}'
+    else:
+        cmd = f'tell application "System Events" to key code {code}'
+    subprocess.run(["osascript", "-e", cmd], capture_output=True, timeout=5)
+    time.sleep(0.1)
+
+
 def _type_text(text: str) -> None:
+    """클립보드 복사 → osascript Cmd+V 붙여넣기."""
     pyperclip.copy(text)
-    time.sleep(0.15)
-    pyautogui.hotkey("command", "v")
-    time.sleep(0.3)
+    time.sleep(0.1)
+    _keystroke("v", using="command down")
+    time.sleep(0.2)
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
-    # 더블클릭으로 확실히 포커스 잡기
-    _click(x, y, delay=0.2)
-    _click(x, y, delay=0.2)
+    """입력칸 클릭 → 전체선택 → 삭제 → 붙여넣기."""
+    _click(x, y, delay=0.3)
+    _click(x, y, delay=0.2)  # 더블클릭 포커스
     time.sleep(0.1)
-    pyautogui.hotkey("command", "a")
+    _keystroke("a", using="command down")  # Cmd+A
     time.sleep(0.1)
-    pyautogui.press("delete")
+    _key_code(51)  # Delete key
     time.sleep(0.1)
     _type_text(text)
-    time.sleep(0.1)
 
 
 def _coord(actions: dict, key: str) -> tuple[int, int]:
