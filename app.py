@@ -510,6 +510,10 @@ class App(ctk.CTk):
         if not self._config.anthropic_api_key:
             messagebox.showwarning("설정 필요", "API 키를 먼저 입력하세요.")
             return self._on_settings()
+        if self._running:
+            return messagebox.showinfo("안내", "실행 중에는 학습할 수 없습니다.")
+        self._running = True
+        self._btn_run.configure(state="disabled")
         self._progress_label.configure(text="UI 학습 중...")
         def _run():
             try:
@@ -517,6 +521,8 @@ class App(ctk.CTk):
                 start_learn()
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("학습 오류", str(e)))
+            self._running = False
+            self.after(0, lambda: self._btn_run.configure(state="normal"))
             self.after(0, self._refresh)
         threading.Thread(target=_run, daemon=True).start()
 
@@ -535,10 +541,12 @@ class App(ctk.CTk):
         if not item:
             pending = self._queue.get_pending()
             if not pending:
-                return messagebox.showinfo("안내", "이미지를 먼저 추가하세요.")
+                return messagebox.showinfo("안내", "키워드 또는 이미지를 먼저 추가하세요.")
             item = pending[0]
 
         total = self._config.korean_songs + self._config.english_songs + self._config.instrumental_songs
+        if total == 0:
+            return messagebox.showwarning("설정 필요", "곡 수를 1 이상으로 설정하세요.")
         scope = {"songs": "곡 생성만", "videos": "곡+영상", "upload": "곡+영상+YouTube"}[self._config.pipeline_scope]
         if not messagebox.askokcancel("실행",
             f"키워드: {item['keyword']}\n총 {total}곡 | 범위: {scope}\n\n"
@@ -564,7 +572,7 @@ class App(ctk.CTk):
         def _run():
             try:
                 from pipeline import Pipeline
-                Pipeline(self._config).run(item, progress_callback=_progress)
+                Pipeline(self._config).run(item, progress_callback=_progress, stop_event=self._stop_flag)
                 self._queue.update_status(item["id"], STATUS_DONE)
                 self.after(0, self._on_done)
             except Exception as e:

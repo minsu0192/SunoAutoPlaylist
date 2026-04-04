@@ -1,14 +1,15 @@
 """
 suno_bot.py — CoreGraphics 네이티브 이벤트로 Suno.com 자동 조작
 
-학습 데이터: ~/.suno_actions.json (learn.py로 학습)
-다운로드 폴더: ~/SunoOutput/downloads/
+학습 데이터: ~/.suno_actions.json
+다운로드 폴더: ~/SunoOutput/downloads/ (Chrome 실행 시 AppleScript로 설정)
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -25,11 +26,20 @@ from Quartz import (
     kCGHIDEventTap,
 )
 
-pyautogui.FAILSAFE = False
+pyautogui.FAILSAFE = True  # 마우스를 왼쪽 상단 모서리로 보내면 비상 정지
 
 ACTIONS_FILE = Path.home() / ".suno_actions.json"
 SUNO_URL = "https://suno.com/create"
 SUNO_DL_DIR = Path.home() / "SunoOutput" / "downloads"
+
+# 중단 플래그 (pipeline에서 설정)
+stop_flag: threading.Event | None = None
+
+
+def _check_stop():
+    """중단 플래그 확인. 설정되어 있으면 예외 발생."""
+    if stop_flag and stop_flag.is_set():
+        raise RuntimeError("사용자에 의해 중단됨")
 
 
 # ------------------------------------------------------------------ #
@@ -45,6 +55,7 @@ def load_actions() -> dict:
 
 def _click(x: int, y: int, delay: float = 0.3) -> None:
     """CoreGraphics 네이티브 클릭."""
+    _check_stop()
     point = CGPointMake(float(x), float(y))
     move = CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft)
     CGEventPost(kCGHIDEventTap, move)
@@ -59,6 +70,7 @@ def _click(x: int, y: int, delay: float = 0.3) -> None:
 
 def _hover(x: int, y: int, delay: float = 0.5) -> None:
     """CoreGraphics 네이티브 hover (클릭 안 함)."""
+    _check_stop()
     point = CGPointMake(float(x), float(y))
     move = CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, kCGMouseButtonLeft)
     CGEventPost(kCGHIDEventTap, move)
@@ -66,7 +78,6 @@ def _hover(x: int, y: int, delay: float = 0.5) -> None:
 
 
 def _type_text(text: str) -> None:
-    """클립보드 복사 → Cmd+V 붙여넣기 (한글 지원)."""
     pyperclip.copy(text)
     time.sleep(0.1)
     pyautogui.hotkey("command", "v")
@@ -74,7 +85,6 @@ def _type_text(text: str) -> None:
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
-    """입력창 클릭 → 전체 선택 → 삭제 → 붙여넣기."""
     _click(x, y)
     pyautogui.hotkey("command", "a")
     time.sleep(0.1)
@@ -92,8 +102,25 @@ def _snapshot_mp3s(directory: Path) -> set[Path]:
     return set(directory.glob("*.mp3"))
 
 
+def _wait_for_downloads(directory: Path, before: set[Path], expected: int = 2,
+                         timeout: int = 30) -> list[Path]:
+    """다운로드 완료를 폴링으로 대기. .crdownload 파일이 사라질 때까지."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        _check_stop()
+        # .crdownload 파일이 있으면 아직 다운로드 중
+        downloading = list(directory.glob("*.crdownload"))
+        after = _snapshot_mp3s(directory)
+        new_files = sorted(after - before, key=lambda p: p.stat().st_mtime)
+        if len(new_files) >= expected and not downloading:
+            return new_files
+        time.sleep(2)
+    # 타임아웃 — 있는 만큼 반환
+    after = _snapshot_mp3s(directory)
+    return sorted(after - before, key=lambda p: p.stat().st_mtime)
+
+
 def _download_one(actions: dict, dot_key: str) -> None:
-    """곡 1개 다운로드: ... 클릭 → Download hover → MP3 클릭."""
     _click(*_coord(actions, dot_key), delay=0.5)
     _hover(*_coord(actions, "download_item"), delay=0.5)
     _click(*_coord(actions, "mp3_btn"), delay=2.0)
@@ -120,19 +147,24 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
     return [kept]
 
 
+def _wait_for_song(timeout: int = 180) -> None:
+    """곡 생성 대기. 10초 단위로 중단 플래그 체크."""
+    waited = 0
+    while waited < timeout:
+        _check_stop()
+        time.sleep(10)
+        waited += 10
+
+
 # ------------------------------------------------------------------ #
 # 브라우저 관리                                                         #
 # ------------------------------------------------------------------ #
 
 def setup_browser() -> None:
-    """
-    파이프라인 시작 전 1회 호출.
-    Chrome 다운로드 경로 설정 + suno.com 열기.
-    이미 Chrome이 열려있으면 종료하지 않고 새 탭으로 열기만 함.
-    """
+    """파이프라인 시작 전 1회 호출. Chrome 다운로드 경로를 AppleScript로 설정."""
     SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Chrome 다운로드 경로 설정 (Chrome이 닫혀있을 때만 반영됨)
+    # Chrome Preferences 수정 (Chrome이 닫혀있을 때 반영)
     prefs_file = Path.home() / "Library/Application Support/Google/Chrome/Default/Preferences"
     if prefs_file.exists():
         try:
@@ -143,7 +175,9 @@ def setup_browser() -> None:
         except Exception:
             pass
 
-    # suno.com/create 열기 (이미 열려있으면 새 탭)
+    # Chrome이 이미 열려있으면 AppleScript로 다운로드 경로 변경
+    # chrome://settings 에서 변경하는 대신, 이미 Preferences에 쓴 것을 반영하도록
+    # Chrome을 새 탭으로 suno.com 열기
     subprocess.Popen(
         ["open", "-a", "Google Chrome", SUNO_URL],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -152,7 +186,6 @@ def setup_browser() -> None:
 
 
 def focus_chrome() -> None:
-    """Chrome을 포커스만 가져온다. 새 탭 열지 않음."""
     subprocess.Popen(
         ["open", "-a", "Google Chrome"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -174,7 +207,7 @@ def check_accessibility() -> bool:
 # ------------------------------------------------------------------ #
 
 def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "longer") -> list[Path]:
-    """보컬곡 세션: Advanced 모드."""
+    """보컬곡 세션: Advanced 모드. 2곡 생성 후 pick 기준으로 선택."""
     actions = load_actions()
     required = ["advanced_tab", "lyrics_input", "style_input",
                 "title_input", "create_btn", "song_dot_btn", "song_dot_btn_2",
@@ -186,31 +219,27 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     download_dir = SUNO_DL_DIR
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chrome 포커스
     focus_chrome()
 
-    # Advanced 탭 → 입력 → Create
     _click(*_coord(actions, "advanced_tab"), delay=0.5)
     _clear_and_type(*_coord(actions, "lyrics_input"), lyrics)
     _clear_and_type(*_coord(actions, "style_input"), style)
     _clear_and_type(*_coord(actions, "title_input"), title)
     _click(*_coord(actions, "create_btn"), delay=1.0)
 
-    # 곡 생성 대기
-    time.sleep(90)
+    # 곡 생성 대기 (10초 단위로 중단 체크, 최대 180초)
+    _wait_for_song(timeout=180)
 
-    # 다운로드
+    # 다운로드 (폴링 방식)
     before = _snapshot_mp3s(download_dir)
     _download_both(actions)
-    time.sleep(5)
+    new_files = _wait_for_downloads(download_dir, before, expected=2, timeout=30)
 
-    after = _snapshot_mp3s(download_dir)
-    new_files = sorted(after - before, key=lambda p: p.stat().st_mtime)
     return _pick_mp3s(new_files[:2], vocal_pick)
 
 
-def run_suno_instrumental(description: str = "") -> list[Path]:
-    """Instrumental 세션: Simple 모드."""
+def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Path]:
+    """Instrumental 세션: Simple 모드. 2곡 생성."""
     actions = load_actions()
     required = ["simple_tab", "instrumental_toggle", "simple_create_btn",
                 "song_dot_btn", "song_dot_btn_2", "download_item", "mp3_btn"]
@@ -221,24 +250,18 @@ def run_suno_instrumental(description: str = "") -> list[Path]:
     download_dir = SUNO_DL_DIR
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # Chrome 포커스
     focus_chrome()
 
-    # Simple 탭 → Instrumental → 설명 → Create
     _click(*_coord(actions, "simple_tab"), delay=0.5)
     _click(*_coord(actions, "instrumental_toggle"), delay=0.5)
     if description and "song_desc_input" in actions:
         _clear_and_type(*_coord(actions, "song_desc_input"), description)
     _click(*_coord(actions, "simple_create_btn"), delay=1.0)
 
-    # 곡 생성 대기
-    time.sleep(90)
+    _wait_for_song(timeout=180)
 
-    # 다운로드 (2곡 모두)
     before = _snapshot_mp3s(download_dir)
     _download_both(actions)
-    time.sleep(5)
+    new_files = _wait_for_downloads(download_dir, before, expected=2, timeout=30)
 
-    after = _snapshot_mp3s(download_dir)
-    new_files = sorted(after - before, key=lambda p: p.stat().st_mtime)
-    return new_files[:2]
+    return _pick_mp3s(new_files[:2], pick)
