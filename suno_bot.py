@@ -78,43 +78,37 @@ def _hover(x: int, y: int, delay: float = 0.4) -> None:
     time.sleep(delay)
 
 
-def _keystroke(key: str, using: str = "") -> None:
-    """osascript로 키 입력. pyautogui보다 확실히 동작함."""
-    if using:
-        cmd = f'tell application "System Events" to keystroke "{key}" using {using}'
-    else:
-        cmd = f'tell application "System Events" to keystroke "{key}"'
-    subprocess.run(["osascript", "-e", cmd], capture_output=True, timeout=5)
-    time.sleep(0.1)
-
-
 def _key_code(code: int, using: str = "") -> None:
-    """osascript로 키코드 입력 (delete, return 등)."""
+    """osascript로 키코드 입력."""
     if using:
         cmd = f'tell application "System Events" to key code {code} using {using}'
     else:
         cmd = f'tell application "System Events" to key code {code}'
     subprocess.run(["osascript", "-e", cmd], capture_output=True, timeout=5)
-    time.sleep(0.1)
+    time.sleep(0.15)
 
 
 def _type_text(text: str) -> None:
-    """클립보드 복사 → osascript Cmd+V 붙여넣기."""
-    pyperclip.copy(text)
-    time.sleep(0.1)
-    _keystroke("v", using="command down")
-    time.sleep(0.2)
+    """클립보드 + key code 9 (Cmd+V)로 붙여넣기. 한국어 OK."""
+    safe = text.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'''set the clipboard to "{safe}"
+delay 0.3
+tell application "System Events"
+    key code 9 using command down
+end tell'''
+    subprocess.run(["osascript", "-e", script], capture_output=True, timeout=30)
+    time.sleep(0.3)
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
     """입력칸 클릭 → 전체선택 → 삭제 → 붙여넣기."""
     _click(x, y, delay=0.3)
-    _click(x, y, delay=0.2)  # 더블클릭 포커스
+    _click(x, y, delay=0.2)
     time.sleep(0.1)
-    _keystroke("a", using="command down")  # Cmd+A
-    time.sleep(0.1)
-    _key_code(51)  # Delete key
-    time.sleep(0.1)
+    _key_code(0, using="command down")   # Cmd+A (key code 0 = A)
+    time.sleep(0.15)
+    _key_code(51)                         # Delete
+    time.sleep(0.15)
     _type_text(text)
 
 
