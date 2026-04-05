@@ -192,43 +192,50 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 360) -> list
         return sorted(_snapshot_mp3s(dl_dir) - before,
                        key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
-    def _wait_no_crdownload(timeout: int = 30) -> None:
-        """진행 중인 다운로드(.crdownload)가 모두 끝날 때까지 대기"""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+    def _has_crdownload() -> bool:
+        return bool(list(dl_dir.glob("*.crdownload")))
+
+    def _wait_download_finish() -> None:
+        """.crdownload가 있으면 끝날 때까지 무한 대기 (다운로드 중이니까)"""
+        # 다운로드 시작까지 잠깐 대기
+        time.sleep(3)
+        while _has_crdownload():
             _check_stop()
-            if not list(dl_dir.glob("*.crdownload")):
-                return
-            time.sleep(1)
+            _log("다운로드 진행 중... (.crdownload 감지)")
+            time.sleep(5)
+        time.sleep(1)  # 파일 시스템 반영
 
     def _try_download(dot_key, dl_key, mp3_key, label) -> bool:
-        """다운로드 클릭 전 기존 다운로드 완료 대기 → 클릭 → 파일 증가 확인"""
-        _wait_no_crdownload()  # 이전 다운로드 끝날 때까지 대기
+        """다운로드 1회 시도. 이미 파일 늘었으면 스킵."""
+        # 클릭 전에 이전 다운로드 완료 대기
+        _wait_download_finish()
+
         count_snap = _new_count()
         _close_popup(actions)
         time.sleep(0.3)
         _log(f"{label} 다운로드 시도")
         _download_one(actions, dot_key, dl_key, mp3_key)
-        # 다운로드 완료 대기 (최대 30초)
-        _wait_no_crdownload(timeout=30)
-        time.sleep(1)  # 파일 시스템 반영 대기
-        return _new_count() > count_snap
+
+        # .crdownload 끝날 때까지 무한 대기
+        _wait_download_finish()
+
+        success = _new_count() > count_snap
+        if success:
+            _log(f"{label} 다운로드 성공")
+        else:
+            _log(f"{label} 다운로드 실패 (파일 증가 없음)")
+        return success
 
     # ── 1차 시도: 곡1 → 곡2 ──
     got_first = _try_download("song_dot_btn", "download_item", "mp3_btn", "곡1")
-    if got_first:
-        _log("곡1 다운로드 성공")
     got_second = _try_download("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
-    if got_second:
-        _log("곡2 다운로드 성공")
 
-    # 둘 다 성공하면 끝
     if got_first and got_second:
         result = _new_files()
         _log(f"다운로드 완료: {len(result)}곡")
         return result
 
-    # ── 실패한 곡만 30초 대기 후 1회 재시도 ──
+    # ── 실패한 곡만 1회 재시도 (곡 생성이 늦었을 수 있음) ──
     failed = []
     if not got_first:
         failed.append(("song_dot_btn", "download_item", "mp3_btn", "곡1"))
@@ -240,9 +247,17 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 360) -> list
         _check_stop()
         time.sleep(5)
 
+    # 재시도 전에 파일 수 다시 체크 (느린 다운로드가 그새 완료됐을 수 있음)
+    if _new_count() >= 2:
+        result = _new_files()
+        _log(f"대기 중 다운로드 완료: {len(result)}곡")
+        return result
+
     for dot, dl, mp3, label in failed:
-        if _try_download(dot, dl, mp3, f"{label} 재시도"):
-            _log(f"{label} 재시도 성공")
+        # 재시도 직전에도 체크 — 이미 2곡 다 받았으면 중복 다운로드 안 함
+        if _new_count() >= 2:
+            break
+        _try_download(dot, dl, mp3, f"{label} 재시도")
 
     result = _new_files()
     _log(f"최종 다운로드: {len(result)}곡")
