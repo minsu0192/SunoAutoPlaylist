@@ -99,50 +99,54 @@ def _check_ffmpeg() -> str:
     return ffmpeg_path
 
 
-def make_video(mp3_path: Path, image_path: Path, output_path: Path) -> Path:
+def make_video(mp3_paths: list[Path] | Path, image_path: Path, output_path: Path) -> Path:
     """
-    이미지와 MP3를 합쳐 MP4 영상을 만든다.
-
-    변환 규격:
-    - 영상: 1920x1080 letterbox (검정 배경)
-    - 오디오: MP3 → AAC 재인코딩
-    - 컨테이너: MP4 (H.264 + AAC)
-
-    Args:
-        mp3_path:    입력 MP3 파일 경로
-        image_path:  입력 이미지 파일 경로
-        output_path: 출력 MP4 파일 경로
-
-    Returns:
-        output_path
-
-    Raises:
-        FileNotFoundError: 입력 파일 없음
-        RuntimeError: ffmpeg 없음 또는 변환 실패
+    이미지 + MP3 여러 곡을 합쳐 1개 MP4 영상을 만든다.
+    곡들을 순서대로 이어붙여 하나의 영상으로 생성.
     """
     ffmpeg = _check_ffmpeg()
 
-    if not mp3_path.exists():
-        raise FileNotFoundError(f"MP3 파일이 없습니다: {mp3_path}")
+    # 단일 Path도 리스트로 변환
+    if isinstance(mp3_paths, Path):
+        mp3_paths = [mp3_paths]
+
+    for mp3 in mp3_paths:
+        if not mp3.exists():
+            raise FileNotFoundError(f"MP3 파일이 없습니다: {mp3}")
     if not image_path.exists():
         raise FileNotFoundError(f"이미지 파일이 없습니다: {image_path}")
 
-    # 출력 디렉토리 생성
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # FFmpeg 명령 구성
-    # -loop 1: 이미지를 정지 영상으로 반복
-    # -i image: 이미지 입력
-    # -i mp3: 오디오 입력
-    # vf scale: 1920x1080 패드 (letterbox)
-    # -shortest: 오디오 길이에 맞춰 자르기
-    # -movflags +faststart: 스트리밍 최적화
+    # 여러 곡이면 먼저 하나로 합치기
+    if len(mp3_paths) == 1:
+        combined_mp3 = mp3_paths[0]
+    else:
+        # ffmpeg concat으로 MP3 합치기
+        concat_list = output_path.parent / "_concat_list.txt"
+        with concat_list.open("w", encoding="utf-8") as f:
+            for mp3 in mp3_paths:
+                f.write(f"file '{mp3}'\n")
+
+        combined_mp3 = output_path.parent / "_combined.mp3"
+        concat_cmd = [
+            ffmpeg, "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_list),
+            "-c", "copy", str(combined_mp3),
+        ]
+        try:
+            r = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                raise RuntimeError(f"MP3 합치기 실패:\n{r.stderr[-1000:]}")
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError("MP3 합치기 타임아웃") from e
+
+    # 이미지 + 합쳐진 오디오 → MP4
     cmd = [
-        ffmpeg,
-        "-y",                         # 덮어쓰기 허용
+        ffmpeg, "-y",
         "-loop", "1",
         "-i", str(image_path),
-        "-i", str(mp3_path),
+        "-i", str(combined_mp3),
         "-vf",
         "scale=1920:1080:force_original_aspect_ratio=decrease,"
         "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
@@ -158,22 +162,19 @@ def make_video(mp3_path: Path, image_path: Path, output_path: Path) -> Path:
     ]
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10분 타임아웃
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     except subprocess.TimeoutExpired as e:
         raise RuntimeError("ffmpeg 변환 타임아웃 (10분 초과)") from e
 
     if result.returncode != 0:
-        raise RuntimeError(
-            f"ffmpeg 변환 실패 (코드 {result.returncode}):\n"
-            f"{result.stderr[-2000:]}"  # 마지막 2000자만
-        )
+        raise RuntimeError(f"ffmpeg 변환 실패:\n{result.stderr[-2000:]}")
 
     if not output_path.exists():
-        raise RuntimeError(f"ffmpeg 실행 후 출력 파일이 없습니다: {output_path}")
+        raise RuntimeError(f"출력 파일 없음: {output_path}")
+
+    # 임시 파일 정리
+    for tmp in [output_path.parent / "_concat_list.txt", output_path.parent / "_combined.mp3"]:
+        if tmp.exists():
+            tmp.unlink()
 
     return output_path

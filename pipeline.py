@@ -257,24 +257,22 @@ class Pipeline:
             _log(f"썸네일 생성 실패, 원본 이미지 사용: {e}")
             video_image = image_path
 
-        _log(f"=== MP4 영상 생성 시작 ({len(all_mp3s)}곡 → 영상) ===")
-        _progress(f"MP4 영상 생성 중... (0/{len(all_mp3s)})", 4, total_steps)
+        # 모든 곡을 합쳐서 1개 영상 생성
+        _log(f"=== MP4 영상 생성 ({len(all_mp3s)}곡 → 1개 영상) ===")
+        _progress(f"MP4 영상 생성 중... ({len(all_mp3s)}곡 합치기)", 4, total_steps)
+        _check_stop()
 
-        mp4_files: list[Path] = []
-        for idx, mp3 in enumerate(all_mp3s):
-            _check_stop()
-            _progress(f"MP4 영상 생성 중... ({idx + 1}/{len(all_mp3s)})", 4, total_steps)
-            _log(f"영상 생성: {mp3.name} → MP4")
-            output_mp4 = output_base / f"{self._safe_filename(keyword)}_{idx + 1:02d}.mp4"
-            try:
-                mp4_files.append(make_video(mp3, video_image, output_mp4))
-                _log(f"영상 완료: {output_mp4.name}")
-            except Exception as e:
-                raise RuntimeError(f"영상 생성 실패 ({mp3.name}): {e}") from e
+        output_mp4 = output_base / f"{self._safe_filename(keyword)}.mp4"
+        for mp3 in all_mp3s:
+            _log(f"  곡: {mp3.name}")
+        try:
+            make_video(all_mp3s, video_image, output_mp4)
+            _log(f"영상 완료: {output_mp4.name} ({output_mp4.stat().st_size / 1024 / 1024:.1f} MB)")
+        except Exception as e:
+            raise RuntimeError(f"영상 생성 실패: {e}") from e
 
-        _log(f"=== 영상 생성 완료: {len(mp4_files)}개 ===")
         if scope == "videos":
-            _progress(f"완료! {len(mp4_files)}개 영상: {output_base}", total_steps, total_steps)
+            _progress(f"완료! 영상: {output_mp4}", total_steps, total_steps)
             return
 
         # ── [5] YouTube 업로드 ────────────────────────────────────
@@ -284,33 +282,28 @@ class Pipeline:
             return
 
         _log("=== YouTube 업로드 시작 ===")
-        _progress(f"YouTube 업로드 중... (0/{len(mp4_files)})", 5, total_steps)
+        _progress("YouTube 업로드 중...", 5, total_steps)
         _check_stop()
         if yt_info is None:
             yt_info = {"title": keyword, "description": keyword, "tags": [keyword]}
         uploader = YouTubeUploader()
 
-        urls: list[str] = []
-        for idx, mp4 in enumerate(mp4_files):
-            _check_stop()
-            title = f"{yt_info['title']} [{idx + 1}/{len(mp4_files)}]"
-            _progress(f"YouTube 업로드 중... ({idx + 1}/{len(mp4_files)})", 5, total_steps)
-            _log(f"YouTube 업로드: {title}")
-            try:
-                url = uploader.upload(
-                    video_path=mp4, title=title,
-                    description=yt_info["description"], tags=yt_info["tags"],
-                    playlist_id=cfg.youtube_playlist_id or "", privacy=cfg.youtube_privacy,
-                )
-                urls.append(url)
-                _log(f"업로드 완료: {url}")
-                if cfg.youtube_playlist_id:
-                    _log(f"플레이리스트에 추가됨: {cfg.youtube_playlist_id}")
-            except Exception as e:
-                raise RuntimeError(f"YouTube 업로드 실패 ({mp4.name}): {e}") from e
+        title = yt_info["title"]
+        _log(f"YouTube 업로드: {title}")
+        try:
+            url = uploader.upload(
+                video_path=output_mp4, title=title,
+                description=yt_info["description"], tags=yt_info["tags"],
+                playlist_id=cfg.youtube_playlist_id or "", privacy=cfg.youtube_privacy,
+            )
+            _log(f"업로드 완료: {url}")
+            if cfg.youtube_playlist_id:
+                _log(f"플레이리스트에 추가됨: {cfg.youtube_playlist_id}")
+        except Exception as e:
+            raise RuntimeError(f"YouTube 업로드 실패: {e}") from e
 
-        _log(f"=== 전체 완료! {len(urls)}개 업로드 ===")
-        _progress(f"완료! {len(urls)}개 업로드됨", total_steps, total_steps)
+        _log(f"=== 전체 완료! ===")
+        _progress(f"완료! {url}", total_steps, total_steps)
 
     def _validate(self, cfg: Config, image_path: Path | None) -> None:
         if not cfg.anthropic_api_key:
