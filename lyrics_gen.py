@@ -129,44 +129,59 @@ def generate_youtube_info(
     Returns:
         {"title": str, "description": str, "tags": list[str]}
     """
-    prompt = f"""당신은 감성 플레이리스트 채널의 운영자입니다. 아래 키워드를 바탕으로 YouTube 영상 정보를 만들어주세요.
+    prompt = f"""당신은 "Seoul Diary Playlist" 감성 재즈팝 플레이리스트 채널의 운영자입니다.
+아래 키워드를 바탕으로 YouTube 영상 정보를 만들어주세요.
 
 키워드: {keyword}
 총 곡 수: {total_songs}곡
 
 반드시 아래 JSON 형식으로만 응답하세요:
 {{
-  "title": "영상 제목",
-  "description": "YouTube 영상 설명 (200자 이내, 해시태그 포함)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
+  "title": "영상 제목 (한국어 감성 + 영어 부제) | Seoul Diary Playlist",
+  "description": "영상 설명 (영어, 감성적 산문체)",
+  "tags": ["태그1", "태그2", ...]
 }}
 
-[title 작성 규칙 - 매우 중요!]
-아래 실제 인기 플레이리스트 채널의 제목 스타일을 참고하세요:
-- "너도 가끔 나를 떠올릴까 그게 궁금해"
-- "서툴러서 빛나던 그 찰나의 기록들."
-- "유독 친절하지 않은 이 밤을 위한 응급 처방전."
-- "우린 영원히 이 노래 속에 누워있자."
-- "그때 붙잡았다면 달라졌을까."
-- "익숙함에 속아 놓쳐버린 사랑에게."
-- "이 서투른 마음에 로맨스 영화 필터를 씌우면,"
-- "불안이 밀려 오는 밤, 그대 나의 —."
-- "소중한 존재를 다정히 헤아려,"
-- "멘탈 바사삭 직전에 찾는 응급 접착제."
+[title 작성 규칙]
+실제 채널의 제목 스타일:
+- "산타렐리를 기다리며 | Christmas Jazz Playlist | Seoul Diary Playlist"
+- "크리스마스가 스며드는 재즈 팝 | Seoul Diary Playlist"
+- "Wavy Nights in Gwangalli | Seoul Diary Playlist"
+- "Fancy Evening in Seongsu | Seoul Diary Playlist"
+- "I Wish You Happiness | Seoul Diary Playlist"
+- "Naksan Park Night Walk Jazz Pop | Seoul Diary Playlist"
 
-특징:
-1. 시적이고 감성적인 독백체 문장 (일기/혼잣말 느낌)
-2. 순수 한국어만 사용 (영어 섞지 않기)
-3. 문장 끝에 마침표, 쉼표, 또는 말줄임으로 여운 남기기
-4. "나", "너", "우리" 같은 1인칭/2인칭 사용
-5. 그리움, 계절, 밤, 사랑, 기억 등 감성 키워드 자연스럽게 녹이기
-6. 50자 이내, 키워드를 그대로 넣지 말고 감성적으로 변형
-7. 위 예시를 절대 그대로 복사하지 말고, 같은 톤으로 새로 만들기
+규칙:
+1. 제목 끝에 반드시 "| Seoul Diary Playlist" 포함
+2. 한국어 감성 문구 또는 영어 장소+분위기 조합
+3. 키워드를 자연스럽게 녹여서 장소/분위기로 변환
+4. 50자 이내 (Seoul Diary Playlist 부분 제외)
 
-[기타 주의사항]
-- description에는 #playlist #감성플리 #suno #aimusic 등 해시태그 포함
-- tags는 최소 8개, 영어와 한국어 혼용 가능
-- JSON 외 다른 텍스트는 절대 포함하지 마세요."""
+[description 작성 규칙]
+실제 채널의 설명 스타일 (영어로 작성):
+- 2-3줄의 감성적 산문체 도입부 (도시, 계절, 분위기 묘사)
+- 이모지 자연스럽게 사용 (🌙✨🎶 등)
+- 마지막에 아래 고정 문구 포함:
+
+📌 All tracks are original compositions created with AI music tools.
+🎵 Music generated using Suno AI — composed, curated, and arranged by Seoul Diary Playlist.
+⚠️ All content on this channel is original. No copyrighted material is used.
+
+❤️ If you enjoyed the vibe, please like, subscribe, and share!
+🔔 Turn on notifications so you never miss a new playlist.
+
+#playlist #SeoulDiaryPlaylist #jazzpop #감성플리 #aimusic
+
+5. 도입부는 3-4문장, 영어로 감성적으로 작성
+6. 저작권 고지 문구는 반드시 포함 (AI 생성 음악임을 명시)
+
+[tags 규칙]
+- 최소 10개
+- 영어/한국어 혼용
+- 필수 포함: playlist, SeoulDiaryPlaylist, jazzpop, 감성플리, aimusic, suno
+- 키워드 관련 태그 추가
+
+JSON 외 다른 텍스트는 절대 포함하지 마세요."""
 
     try:
         response = _call_claude(api_key, prompt)
