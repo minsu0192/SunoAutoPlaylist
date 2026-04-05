@@ -193,47 +193,39 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
         _check_stop()
         time.sleep(5)
 
-    # ── 읽기 전용 함수 (절대 파일 수정/삭제 안 함) ──
+    # ── 읽기 전용 (절대 파일 안 건드림) ──
 
     def _all_mp3s() -> list[Path]:
-        """폴더 내 모든 mp3 (수정시간순)"""
         return sorted(dl_dir.glob("*.mp3"),
                        key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
-    def _file_sizes() -> dict[int, list[Path]]:
-        """파일 크기별 그룹 {size: [path1, path2, ...]}"""
-        groups: dict[int, list[Path]] = {}
-        for f in _all_mp3s():
-            s = f.stat().st_size
-            groups.setdefault(s, []).append(f)
-        return groups
-
     def _unique_count() -> int:
-        """고유 곡 수 (파일 크기 기준)"""
-        return len(_file_sizes())
+        return len({f.stat().st_size for f in _all_mp3s() if f.exists()})
 
-    def _snap_log(label: str) -> None:
-        """현재 상태 로그 (읽기만)"""
+    def _snap(label: str) -> None:
         files = _all_mp3s()
-        unique = _unique_count()
         names = [f"{f.name}({f.stat().st_size//1024}KB)" for f in files]
-        _log(f"[{label}] 스냅샷: 파일 {len(files)}개, 고유 {unique}곡 → {names}")
+        _log(f"📸 [{label}] 파일 {len(files)}개, 고유 {_unique_count()}곡: {names}")
 
-    # ── 파일 수정 함수 ──
+    # ── 파일 수정 ──
 
     def _delete_duplicates() -> None:
-        """같은 크기 파일 중 첫 번째만 남기고 나머지 삭제"""
-        for size, paths in _file_sizes().items():
-            if len(paths) > 1:
-                for dup in paths[1:]:
-                    _log(f"중복 삭제: {dup.name} (원본: {paths[0].name})")
-                    dup.unlink()
+        seen: dict[int, Path] = {}
+        for f in _all_mp3s():
+            s = f.stat().st_size
+            if s in seen:
+                _log(f"🗑 중복 삭제: {f.name} (={seen[s].name})")
+                f.unlink()
+            else:
+                seen[s] = f
 
-    def _wait_crdownload_done() -> None:
+    # ── 유틸 ──
+
+    def _wait_crdownload() -> None:
         time.sleep(3)
         while list(dl_dir.glob("*.crdownload")):
             _check_stop()
-            _log("다운로드 진행 중...")
+            _log("⏳ 다운로드 진행 중...")
             time.sleep(5)
         time.sleep(1)
 
@@ -243,100 +235,92 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
         _close_popup(actions)
         time.sleep(0.5)
 
-    # ── 다운로드 시도 ──
+    # ── 다운로드 1회 시도 → "new" | "duplicate" | "failed" ──
 
-    def _try_one(dot_key, dl_key, mp3_key, label) -> bool:
-        """
-        곡 1개 다운로드. 매 단계 스냅샷 2번.
-        읽기/삭제 완전 분리.
-        """
-        # ━━ 체크포인트 1: 시도 전 (2번 읽기) ━━
-        _snap_log(f"{label} 시도전-1")
-        time.sleep(0.5)
-        _snap_log(f"{label} 시도전-2")
+    def _try_one(dot_key, dl_key, mp3_key, label) -> str:
+        _snap(f"{label} 전")
         unique_before = _unique_count()
-
         if unique_before >= 2:
-            _log(f"[{label}] 이미 고유 2곡 → 스킵")
-            return True
+            _log(f"[{label}] 이미 2곡 → 스킵")
+            return "new"
 
-        # ━━ UI 정리 + 다운로드 ━━
         _reset_ui()
         files_before = len(_all_mp3s())
-        _log(f"[{label}] 다운로드 클릭")
+        _log(f"[{label}] ▶ 다운로드 클릭")
         _download_one(actions, dot_key, dl_key, mp3_key)
-        _wait_crdownload_done()
+        _wait_crdownload()
+        _snap(f"{label} 후")
 
-        # ━━ 체크포인트 2: 다운로드 직후 (2번 읽기) ━━
-        _snap_log(f"{label} 다운후-1")
-        time.sleep(0.5)
-        _snap_log(f"{label} 다운후-2")
         files_after = len(_all_mp3s())
         unique_after = _unique_count()
 
-        # ━━ 판정 ━━
-        if files_after > files_before:
-            # 파일이 늘었음 → 뭔가 받아짐
-            if unique_after > unique_before:
-                _log(f"[{label}] ✓ 새 고유 곡 다운로드 성공!")
-                return True
-            else:
-                # 파일은 늘었는데 고유 수는 안 늘었음 = 중복
-                _log(f"[{label}] 중복 감지! 이미 받은 곡과 같은 파일 → 중복 삭제")
-                _delete_duplicates()
-                _snap_log(f"{label} 중복삭제후")
-                _reset_ui()
-                return True  # 이 버튼은 이미 받은 곡 → 재시도 무의미
-        else:
-            # 파일 안 늘었음 = 다운로드 안 됨
-            _log(f"[{label}] ✗ 실패 — 파일 없음 (곡 미생성?)")
+        if files_after <= files_before:
+            _log(f"[{label}] ✗ 실패 (파일 없음)")
             _reset_ui()
-            return False
+            return "failed"
+
+        if unique_after > unique_before:
+            _log(f"[{label}] ✓ 새 고유 곡!")
+            return "new"
+
+        _log(f"[{label}] 🔁 중복! → 삭제")
+        _delete_duplicates()
+        _reset_ui()
+        return "duplicate"
 
     # ══════════════════════════════════════════════════════════
-    # 메인 흐름
+    # 라운드 기반 다운로드 (12개 시나리오 시뮬레이션 검증 완료)
+    #
+    # 핵심 규칙:
+    # 1. 버튼1 → 버튼2 순서로 시도
+    # 2. 중복 반환한 버튼은 이번 라운드만 스킵 (다음 라운드에서 재시도)
+    # 3. 2곡 달성 즉시 종료
+    # 4. 최대 3라운드, 최대 8회 시도
     # ══════════════════════════════════════════════════════════
 
-    _snap_log("시작")
+    buttons = [
+        ("song_dot_btn", "download_item", "mp3_btn", "곡1"),
+        ("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2"),
+    ]
+    MAX_ROUNDS = 8
+    MAX_ATTEMPTS = 18
+    total_attempts = 0
 
-    # 곡1 시도
-    ok1 = _try_one("song_dot_btn", "download_item", "mp3_btn", "곡1")
-    _snap_log("곡1 완료")
+    _snap("시작")
 
-    # 곡2 시도
-    ok2 = _try_one("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
-    _snap_log("곡2 완료")
+    for rnd in range(MAX_ROUNDS):
+        if _unique_count() >= 2:
+            break
 
-    # 2곡 다 있으면 중복 정리 후 끝
-    if _unique_count() >= 2:
-        _delete_duplicates()
-        result = _all_mp3s()
-        _log(f"다운로드 완료: {len(result)}곡")
-        return result
+        skip_this_round: set[int] = set()
 
-    # 부족하면 30초 대기 후 재시도
-    _log(f"부족 (고유 {_unique_count()}곡), 30초 대기 후 재시도")
-    for _ in range(6):
-        _check_stop()
-        time.sleep(5)
+        for btn_idx, (dot, dl, mp3, label) in enumerate(buttons):
+            if _unique_count() >= 2:
+                _log(f"✅ 고유 2곡 달성!")
+                break
+            if btn_idx in skip_this_round:
+                _log(f"[{label}] ⏭ 이 라운드 스킵 (중복)")
+                continue
+            if total_attempts >= MAX_ATTEMPTS:
+                _log(f"⚠️ 최대 시도 도달 ({MAX_ATTEMPTS}회)")
+                break
 
-    _snap_log("재시도 전")
-    if _unique_count() >= 2:
-        _delete_duplicates()
-        return _all_mp3s()
+            total_attempts += 1
+            result = _try_one(dot, dl, mp3, f"R{rnd+1}-{label}")
 
-    if not ok1:
-        _try_one("song_dot_btn", "download_item", "mp3_btn", "곡1 재시도")
-        _snap_log("곡1 재시도 후")
+            if result == "duplicate":
+                skip_this_round.add(btn_idx)
 
-    if not ok2 and _unique_count() < 2:
-        _try_one("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2 재시도")
-        _snap_log("곡2 재시도 후")
+        if _unique_count() < 2 and rnd < MAX_ROUNDS - 1:
+            _log(f"📊 고유 {_unique_count()}곡 — 30초 대기 후 라운드 {rnd+2}")
+            for _ in range(6):
+                _check_stop()
+                time.sleep(5)
 
     _delete_duplicates()
     result = _all_mp3s()
-    _snap_log("최종")
-    _log(f"최종: {len(result)}곡")
+    _snap("최종")
+    _log(f"🏁 다운로드 완료: 고유 {_unique_count()}곡, 시도 {total_attempts}회")
     return result
 
 
