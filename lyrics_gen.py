@@ -20,12 +20,13 @@ MODEL = "claude-haiku-4-5-20251001"
 # 내부 헬퍼                                                            #
 # ------------------------------------------------------------------ #
 
-def _call_claude(api_key: str, prompt: str) -> str:
+def _call_claude(api_key: str, prompt: str, temperature: float = 1.0) -> str:
     """Claude API를 호출하고 텍스트 응답을 반환한다."""
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model=MODEL,
         max_tokens=1024,
+        temperature=temperature,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text.strip()
@@ -72,11 +73,26 @@ def generate_song_content(
         else "Write in English. The lyrics must be in English."
     )
 
+    import random
+    # 매번 다른 톤/장르를 랜덤 지정
+    tone_pool = [
+        "hopeful and bright", "melancholic and dreamy", "upbeat and groovy",
+        "calm and meditative", "passionate and intense", "playful and quirky",
+        "dark and moody", "warm and cozy", "ethereal and floating",
+        "funky and bold", "tender and delicate", "rebellious and raw",
+        "cinematic and grand", "minimal and stripped", "jazzy and smooth",
+    ]
+    genre_pool = [
+        "indie pop", "jazz pop", "lo-fi hip hop", "R&B soul", "acoustic folk",
+        "synth pop", "bossa nova", "dream pop", "soft rock", "neo soul",
+        "city pop", "electro swing", "ambient", "bedroom pop", "funk",
+    ]
+    chosen_tone = random.choice(tone_pool)
+    chosen_genre = random.choice(genre_pool)
+
     variety_note = (
-        f"이것은 {index + 1}번째 버전입니다. 이전 버전과 완전히 다른 제목, 다른 분위기, 다른 가사, 다른 장르로 작성하세요. "
-        f"절대 이전 버전과 비슷한 가사나 제목을 쓰지 마세요. 랜덤 시드: {hash(f'{keyword}_{index}') % 10000}"
-        if index > 0
-        else ""
+        f"이것은 {index + 1}번째 버전입니다. 이전 버전과 완전히 다른 제목, 다른 분위기, 다른 가사로 작성하세요."
+        if index > 0 else ""
     )
 
     prompt = f"""당신은 전문 작사가입니다. 아래 키워드를 바탕으로 노래 제목, 가사, 음악 스타일을 만들어주세요.
@@ -85,17 +101,20 @@ def generate_song_content(
 {lang_instruction}
 {variety_note}
 
+이 곡의 톤: {chosen_tone}
+이 곡의 장르: {chosen_genre}
+
 반드시 아래 JSON 형식으로만 응답하세요:
 {{
-  "title": "창의적인 노래 제목 (감성적이고 독특하게, 키워드를 그대로 쓰지 말고 변형)",
+  "title": "창의적인 노래 제목",
   "lyrics": "완성된 가사 (최소 4절, 각 절 4줄 이상, [Verse 1], [Chorus] 등 섹션 레이블)",
-  "style": "음악 스타일 (영어, 콤마 구분, 50자 이내, 예: lo-fi hip hop, chill, warm, nostalgic)"
+  "style": "음악 스타일 (영어, 콤마 구분, 50자 이내)"
 }}
 
-주의사항:
-- title은 감성적이고 기억에 남는 제목이어야 합니다. "{keyword} Ver.1" 같은 건 절대 안 됩니다.
-- lyrics는 완성된 노래 가사여야 합니다.
-- style은 Suno.com의 Style of Music 입력창에 넣을 짧은 영어 설명입니다.
+[중요 규칙]
+- 제목은 매번 완전히 다르고 독특해야 합니다. 이전에 쓴 제목과 겹치면 안 됩니다.
+- style에는 반드시 "{chosen_genre}" 계열을 포함하세요.
+- "{keyword}" 키워드를 제목에 그대로 넣지 말고 감성적으로 변형하세요.
 - JSON 외 다른 텍스트는 절대 포함하지 마세요."""
 
     try:
