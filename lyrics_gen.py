@@ -78,19 +78,21 @@ def generate_song_content(
         else ""
     )
 
-    prompt = f"""당신은 전문 작사가입니다. 아래 키워드를 바탕으로 노래 가사와 음악 스타일을 만들어주세요.
+    prompt = f"""당신은 전문 작사가입니다. 아래 키워드를 바탕으로 노래 제목, 가사, 음악 스타일을 만들어주세요.
 
 키워드: {keyword}
 {lang_instruction}
 {variety_note}
 
-반드시 아래 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요:
+반드시 아래 JSON 형식으로만 응답하세요:
 {{
-  "lyrics": "여기에 가사 (최소 4절, 각 절은 4줄 이상, [Verse 1], [Chorus] 등 섹션 레이블 포함)",
-  "style": "여기에 음악 스타일 (예: lo-fi hip hop, chill beats, 120 BPM, warm, nostalgic — 영어로, 콤마 구분, 50자 이내)"
+  "title": "창의적인 노래 제목 (감성적이고 독특하게, 키워드를 그대로 쓰지 말고 변형)",
+  "lyrics": "완성된 가사 (최소 4절, 각 절 4줄 이상, [Verse 1], [Chorus] 등 섹션 레이블)",
+  "style": "음악 스타일 (영어, 콤마 구분, 50자 이내, 예: lo-fi hip hop, chill, warm, nostalgic)"
 }}
 
 주의사항:
+- title은 감성적이고 기억에 남는 제목이어야 합니다. "{keyword} Ver.1" 같은 건 절대 안 됩니다.
 - lyrics는 완성된 노래 가사여야 합니다.
 - style은 Suno.com의 Style of Music 입력창에 넣을 짧은 영어 설명입니다.
 - JSON 외 다른 텍스트는 절대 포함하지 마세요."""
@@ -103,6 +105,7 @@ def generate_song_content(
             raise ValueError("응답에 'lyrics' 또는 'style' 키가 없습니다.")
 
         return {
+            "title": str(result.get("title", keyword)).strip(),
             "lyrics": str(result["lyrics"]).strip(),
             "style": str(result["style"]).strip(),
         }

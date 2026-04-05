@@ -87,12 +87,10 @@ class Pipeline:
 
         def _gen_kr(i):
             c = generate_song_content(keyword, "korean", i, cfg.anthropic_api_key)
-            c["title"] = f"{keyword} Korean Ver.{i + 1}"
             return ("kr", i, c)
 
         def _gen_en(i):
             c = generate_song_content(keyword, "english", i, cfg.anthropic_api_key)
-            c["title"] = f"{keyword} English Ver.{i + 1}"
             return ("en", i, c)
 
         def _gen_inst():
