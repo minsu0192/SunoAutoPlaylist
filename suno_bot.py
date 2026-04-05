@@ -175,75 +175,78 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
 def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 360) -> list[Path]:
     """
     곡 생성 대기 + 다운로드.
-    150초 기본 대기 → 다운로드 시도 → 실패 시 재시도 (이미 받은 건 안 받음)
+    150초 대기 → 곡1 다운 → 곡2 다운 → 실패한 곡만 1회 재시도
     """
     before = _snapshot_mp3s(dl_dir)
     _log("곡 생성 대기 시작 (150초)")
 
     # 150초 기본 대기
-    for i in range(30):  # 150초 = 5초 × 30
+    for _ in range(30):
         _check_stop()
         time.sleep(5)
 
-    got_first = False
-    got_second = False
-    total_waited = 150
+    def _new_count():
+        return len(_snapshot_mp3s(dl_dir) - before)
 
-    for attempt in range(5):
-        _check_stop()
+    def _new_files():
+        return sorted(_snapshot_mp3s(dl_dir) - before,
+                       key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
-        # 이미 다 받았으면 끝
-        new = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-        if len(new) >= 2:
-            _log(f"2곡 다운로드 완료 (시도 {attempt})")
-            return new
+    def _wait_no_crdownload(timeout: int = 30) -> None:
+        """진행 중인 다운로드(.crdownload)가 모두 끝날 때까지 대기"""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            _check_stop()
+            if not list(dl_dir.glob("*.crdownload")):
+                return
+            time.sleep(1)
 
-        # 팝업 닫기
+    def _try_download(dot_key, dl_key, mp3_key, label) -> bool:
+        """다운로드 클릭 전 기존 다운로드 완료 대기 → 클릭 → 파일 증가 확인"""
+        _wait_no_crdownload()  # 이전 다운로드 끝날 때까지 대기
+        count_snap = _new_count()
         _close_popup(actions)
         time.sleep(0.3)
+        _log(f"{label} 다운로드 시도")
+        _download_one(actions, dot_key, dl_key, mp3_key)
+        # 다운로드 완료 대기 (최대 30초)
+        _wait_no_crdownload(timeout=30)
+        time.sleep(1)  # 파일 시스템 반영 대기
+        return _new_count() > count_snap
 
-        # 아직 안 받은 곡만 다운로드
-        if not got_first:
-            _log(f"첫째 곡 다운로드 시도 #{attempt+1}")
-            _download_one(actions, "song_dot_btn", "download_item", "mp3_btn")
-            time.sleep(2)
+    # ── 1차 시도: 곡1 → 곡2 ──
+    got_first = _try_download("song_dot_btn", "download_item", "mp3_btn", "곡1")
+    if got_first:
+        _log("곡1 다운로드 성공")
+    got_second = _try_download("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
+    if got_second:
+        _log("곡2 다운로드 성공")
 
-            # 첫째 곡 다운 확인
-            check = _snapshot_mp3s(dl_dir) - before
-            if len(check) >= 1:
-                got_first = True
-                _log("첫째 곡 다운로드 성공")
+    # 둘 다 성공하면 끝
+    if got_first and got_second:
+        result = _new_files()
+        _log(f"다운로드 완료: {len(result)}곡")
+        return result
 
-        if not got_second:
-            _log(f"둘째 곡 다운로드 시도 #{attempt+1}")
-            _download_one(actions, "song_dot_btn_2", "download_item_2", "mp3_btn_2")
-            time.sleep(2)
+    # ── 실패한 곡만 30초 대기 후 1회 재시도 ──
+    failed = []
+    if not got_first:
+        failed.append(("song_dot_btn", "download_item", "mp3_btn", "곡1"))
+    if not got_second:
+        failed.append(("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2"))
 
-            check = _snapshot_mp3s(dl_dir) - before
-            if len(check) >= 2:
-                got_second = True
-                _log("둘째 곡 다운로드 성공")
+    _log(f"{len(failed)}곡 미완료, 30초 대기 후 재시도...")
+    for _ in range(6):
+        _check_stop()
+        time.sleep(5)
 
-        # 결과 확인
-        new = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-        if len(new) >= 2 or (got_first and got_second):
-            _log(f"다운로드 완료: {len(new)}곡")
-            return new
+    for dot, dl, mp3, label in failed:
+        if _try_download(dot, dl, mp3, f"{label} 재시도"):
+            _log(f"{label} 재시도 성공")
 
-        # 못 받았으면 대기 후 재시도
-        total_waited += 30
-        if total_waited >= max_wait:
-            _log(f"타임아웃 ({total_waited}초)")
-            break
-        _log(f"다운로드 미완료 ({len(new)}곡), 30초 후 재시도...")
-        for _ in range(6):
-            _check_stop()
-            time.sleep(5)
-
-    # 최종 결과
-    final = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-    _log(f"최종 다운로드: {len(final)}곡")
-    return final
+    result = _new_files()
+    _log(f"최종 다운로드: {len(result)}곡")
+    return result
 
 
 # ── 브라우저 ──
@@ -299,10 +302,12 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     dl = SUNO_DL_DIR
     dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
+    time.sleep(3)  # 페이지 완전 로딩 대기
 
     _log(f"보컬 세션 시작: {title}")
-    _click(*_coord(actions, "advanced_tab"), delay=0.3)
+    _click(*_coord(actions, "advanced_tab"), delay=0.5)
     _log("Advanced 탭 클릭")
+    time.sleep(0.5)  # 탭 전환 대기
     _clear_and_type(*_coord(actions, "lyrics_input"), lyrics)
     _log("가사 입력 완료")
     _clear_and_type(*_coord(actions, "style_input"), style)
@@ -330,6 +335,7 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     dl = SUNO_DL_DIR
     dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
+    time.sleep(3)  # 페이지 완전 로딩 대기
 
     _log(f"Instrumental 세션 시작: {description[:50] if description else '(설명 없음)'}")
     _click(*_coord(actions, "advanced_tab") if "advanced_tab" in actions
