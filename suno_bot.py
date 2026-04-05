@@ -288,16 +288,21 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
 
     _snap("시작")
 
+    done_buttons: set[int] = set()  # "new" 반환한 버튼 — 영구 스킵
+
     for rnd in range(MAX_ROUNDS):
         if _unique_count() >= 2:
             break
 
-        skip_this_round: set[int] = set()
+        skip_this_round: set[int] = set()  # "duplicate" 반환 — 이 라운드만 스킵
 
         for btn_idx, (dot, dl, mp3, label) in enumerate(buttons):
             if _unique_count() >= 2:
                 _log(f"✅ 고유 2곡 달성!")
                 break
+            if btn_idx in done_buttons:
+                _log(f"[{label}] ⏭ 이미 성공한 버튼 → 영구 스킵")
+                continue
             if btn_idx in skip_this_round:
                 _log(f"[{label}] ⏭ 이 라운드 스킵 (중복)")
                 continue
@@ -308,7 +313,9 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
             total_attempts += 1
             result = _try_one(dot, dl, mp3, f"R{rnd+1}-{label}")
 
-            if result == "duplicate":
+            if result == "new":
+                done_buttons.add(btn_idx)  # 이 버튼은 다시 안 건드림
+            elif result == "duplicate":
                 skip_this_round.add(btn_idx)
 
         if _unique_count() < 2 and rnd < MAX_ROUNDS - 1:
