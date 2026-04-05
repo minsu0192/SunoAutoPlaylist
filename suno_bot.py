@@ -236,45 +236,61 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
 
     def _try_one(dot_key, dl_key, mp3_key, label) -> bool:
         """
-        곡 1개 다운로드 시도.
-        - 시도 전 스냅샷 체크
-        - 다운로드
-        - 시도 후 스냅샷 체크 + 중복 감지
+        곡 1개 다운로드 시도 — 매 단계마다 스냅샷 2번 체크.
         Returns: True=새 고유 곡 추가됨 or 이미 2곡, False=실패
         """
-        # ── 시도 전 체크 ──
-        before = _unique_mp3s()
-        _log(f"[{label}] 시도 전 체크 — {_snapshot()}")
-        if len(before) >= 2:
-            _log(f"[{label}] 이미 2곡 완료 → 스킵")
+        # ━━ 체크포인트 1: 시도 전 상태 확인 (2번) ━━
+        snap1a = _unique_mp3s()
+        time.sleep(0.5)
+        snap1b = _unique_mp3s()
+        _log(f"[{label}] ■ 체크1 시도 전: {_snapshot()}")
+        if len(snap1a) != len(snap1b):
+            _log(f"[{label}] ⚠ 스냅샷 불일치 ({len(snap1a)} vs {len(snap1b)}), 재확인")
+            snap1b = _unique_mp3s()
+        if len(snap1b) >= 2:
+            _log(f"[{label}] ✓ 이미 고유 2곡 → 다운로드 불필요")
             return True
 
-        # ── UI 정리 + 다운로드 ──
+        count_before = len(snap1b)
+
+        # ━━ UI 정리 ━━
         _reset_ui()
-        sizes_before = _unique_sizes()
-        _log(f"[{label}] 다운로드 클릭")
+
+        # ━━ 다운로드 클릭 ━━
+        _log(f"[{label}] ▶ 다운로드 클릭 (현재 고유 {count_before}곡)")
         _download_one(actions, dot_key, dl_key, mp3_key)
+
+        # ━━ 다운로드 완료 대기 ━━
         _wait_crdownload_done()
 
-        # ── 시도 후 체크 ──
-        after = _unique_mp3s()  # 중복 자동 삭제됨
-        _log(f"[{label}] 시도 후 체크 — {_snapshot()}")
+        # ━━ 체크포인트 2: 다운로드 직후 확인 (2번) ━━
+        snap2a = _unique_mp3s()  # 중복 자동 삭제됨
+        time.sleep(0.5)
+        snap2b = _unique_mp3s()
+        _log(f"[{label}] ■ 체크2 다운 후: {_snapshot()}")
+        if len(snap2a) != len(snap2b):
+            _log(f"[{label}] ⚠ 스냅샷 불일치, 재확인")
+            snap2b = _unique_mp3s()
 
-        if len(after) > len(before):
-            _log(f"[{label}] 새 고유 곡 추가됨!")
+        count_after = len(snap2b)
+
+        if count_after > count_before:
+            new_name = snap2b[-1].name if snap2b else "?"
+            _log(f"[{label}] ✓ 새 고유 곡 추가됨: {new_name}")
             return True
 
-        # 파일은 받아졌는데 중복이라 삭제된 경우
-        new_files = [f for f in _get_mp3s() if f.stat().st_size in sizes_before]
-        if len(_get_mp3s()) == len(before):
-            # 아무것도 안 받아짐
-            _log(f"[{label}] 실패 — 다운로드 안 됨")
-            _reset_ui()
-            return False
-
-        _log(f"[{label}] 중복 곡 감지 → 이 버튼은 이미 받은 곡")
-        _reset_ui()
-        return True  # 이 버튼으로는 새 곡을 못 받음, 다른 버튼에서 받아야 함
+        if count_after == count_before:
+            # 파일 수 안 늘었음 → 실패 or 중복
+            all_mp3 = list(dl_dir.glob("*.mp3"))
+            if len(all_mp3) > count_before:
+                # 파일은 받아졌는데 중복이라 _unique_mp3s가 삭제함
+                _log(f"[{label}] ✓ 중복 곡 감지 (이미 받은 곡과 동일) → 이 위치 스킵")
+                _reset_ui()
+                return True  # 이 버튼은 이미 받은 곡이므로 재시도 무의미
+            else:
+                _log(f"[{label}] ✗ 실패 — 다운로드 안 됨 (곡 미생성?)")
+                _reset_ui()
+                return False
 
     # ══════════════════════════════════════════════════════════
     # 메인 흐름: 한 곡씩 받고, 매번 체크
