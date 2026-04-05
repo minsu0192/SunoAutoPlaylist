@@ -172,90 +172,127 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
     return [kept]
 
 
-def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 360) -> list[Path]:
+def _escape_key() -> None:
+    """Escape 키 — 열린 메뉴/팝업 닫기"""
+    _key_code(53)  # Escape
+    time.sleep(0.3)
+
+
+def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list[Path]:
     """
-    곡 생성 대기 → 곡1 다운 → 곡2 다운 (각각 개별 추적, 중복 다운로드 불가)
+    곡 생성 대기 → 다운로드.
+
+    설계 원칙:
+    - 다운로드 시도 전에 반드시 UI 상태 초기화 (Escape + 팝업 닫기)
+    - 한 곡 시도 → 성공/실패 확인 → UI 정리 → 다음 곡 시도
+    - 실패한 곡만 재시도, 성공한 곡은 절대 다시 안 건드림
+    - 이미 받은 파일 수를 기준으로 추가 다운로드 필요 여부 판단
     """
     _log("곡 생성 대기 시작 (150초)")
     for _ in range(30):
         _check_stop()
         time.sleep(5)
 
-    # 각 곡의 파일을 개별 추적 (None = 아직 안 받음, Path = 받은 파일)
-    song1_file: Path | None = None
-    song2_file: Path | None = None
+    downloaded: list[Path] = []  # 성공한 파일들
 
-    def _has_crdownload() -> bool:
-        return bool(list(dl_dir.glob("*.crdownload")))
+    def _count_mp3s() -> int:
+        return len(list(dl_dir.glob("*.mp3")))
 
-    def _wait_download_finish() -> None:
-        """.crdownload가 있는 동안 무한 대기 — 다운로드 진행 중"""
-        time.sleep(3)  # 다운로드 시작 대기
-        while _has_crdownload():
+    def _latest_mp3() -> Path | None:
+        files = sorted(dl_dir.glob("*.mp3"),
+                        key=lambda p: p.stat().st_mtime if p.exists() else 0)
+        return files[-1] if files else None
+
+    def _wait_crdownload_done() -> None:
+        """.crdownload 파일이 사라질 때까지 무한 대기"""
+        time.sleep(3)
+        while list(dl_dir.glob("*.crdownload")):
             _check_stop()
             _log("다운로드 진행 중...")
             time.sleep(5)
         time.sleep(1)
 
-    def _try_one_download(dot_key, dl_key, mp3_key, label) -> Path | None:
-        """
-        곡 1개 다운로드 시도.
-        클릭 직전 스냅샷 → 클릭 → 완료 대기 → 직후 스냅샷 비교
-        → 새로 생긴 파일 1개를 리턴 (없으면 None)
-        """
-        # 이전 다운로드 완료 대기
-        _wait_download_finish()
-
-        snap_before = _snapshot_mp3s(dl_dir)
+    def _reset_ui() -> None:
+        """메뉴/팝업 등 UI 상태 초기화"""
+        _escape_key()
+        _escape_key()
         _close_popup(actions)
         time.sleep(0.5)
-        _log(f"{label} 다운로드 클릭")
+
+    def _try_download(dot_key, dl_key, mp3_key, label) -> bool:
+        """
+        곡 1개 다운로드 시도.
+        Returns: True if 새 파일이 생겼으면, False if 안 생겼으면
+        """
+        # 이미 2곡 다 받았으면 시도하지 않음
+        if _count_mp3s() >= 2:
+            _log(f"{label} — 이미 2곡 다운완료, 스킵")
+            return True
+
+        # UI 상태 초기화
+        _reset_ui()
+
+        count_before = _count_mp3s()
+        _log(f"{label} 다운로드 클릭 (현재 {count_before}곡)")
         _download_one(actions, dot_key, dl_key, mp3_key)
 
-        # 다운로드 완료까지 무한 대기
-        _wait_download_finish()
+        # .crdownload 끝날 때까지 무한 대기
+        _wait_crdownload_done()
 
-        snap_after = _snapshot_mp3s(dl_dir)
-        new = snap_after - snap_before
-        if new:
-            f = sorted(new, key=lambda p: p.stat().st_mtime if p.exists() else 0)[0]
-            _log(f"{label} 다운로드 성공: {f.name}")
-            return f
+        count_after = _count_mp3s()
+        if count_after > count_before:
+            new_file = _latest_mp3()
+            _log(f"{label} 다운로드 성공: {new_file.name if new_file else '?'}")
+            if new_file:
+                downloaded.append(new_file)
+            return True
+
         _log(f"{label} 다운로드 실패 (새 파일 없음)")
-        return None
+        # 실패 후 UI 정리
+        _reset_ui()
+        return False
 
-    # ── 1차 시도 ──
-    song1_file = _try_one_download("song_dot_btn", "download_item", "mp3_btn", "곡1")
-    song2_file = _try_one_download("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
+    # ── 1차 시도: 곡1 → 곡2 ──
+    ok1 = _try_download("song_dot_btn", "download_item", "mp3_btn", "곡1")
 
-    if song1_file and song2_file:
-        _log(f"다운로드 완료: 2곡")
-        return [song1_file, song2_file]
+    # 곡1 실패했으면 곡2를 먼저 시도 (곡2가 먼저 생성되었을 수 있음)
+    if not ok1:
+        _log("곡1 실패 → 곡2 먼저 시도")
 
-    # ── 실패한 곡만 30초 대기 후 1회 재시도 ──
-    need_retry = []
-    if not song1_file:
-        need_retry.append(("song_dot_btn", "download_item", "mp3_btn", "곡1", 1))
-    if not song2_file:
-        need_retry.append(("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2", 2))
+    ok2 = _try_download("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
 
-    _log(f"{len(need_retry)}곡 미완료, 30초 대기 후 재시도...")
+    # 둘 다 성공이면 끝
+    if ok1 and ok2:
+        _log(f"다운로드 완료: {len(downloaded)}곡")
+        return downloaded
+
+    # ── 실패한 곡만 재시도 ──
+    _log("일부 실패, 30초 대기 후 재시도...")
     for _ in range(6):
         _check_stop()
         time.sleep(5)
 
-    for dot, dl, mp3, label, num in need_retry:
-        result = _try_one_download(dot, dl, mp3, f"{label} 재시도")
-        if result:
-            if num == 1:
-                song1_file = result
-            else:
-                song2_file = result
+    # 대기 중에 2곡 다 받아졌는지 확인
+    if _count_mp3s() >= 2:
+        for f in sorted(dl_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime):
+            if f not in downloaded:
+                downloaded.append(f)
+        _log(f"대기 중 다운로드 완료: {len(downloaded)}곡")
+        return downloaded
 
-    # 최종 결과 (None 제거)
-    final = [f for f in (song1_file, song2_file) if f is not None]
-    _log(f"최종 다운로드: {len(final)}곡")
-    return final
+    # 실패한 곡만 재시도 (곡1이 실패했으면 곡1, 곡2가 실패했으면 곡2)
+    if not ok1:
+        _try_download("song_dot_btn", "download_item", "mp3_btn", "곡1 재시도")
+    if not ok2:
+        _try_download("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2 재시도")
+
+    # 혹시 downloaded에 안 잡힌 파일이 있으면 추가
+    for f in sorted(dl_dir.glob("*.mp3"), key=lambda p: p.stat().st_mtime):
+        if f not in downloaded:
+            downloaded.append(f)
+
+    _log(f"최종 다운로드: {len(downloaded)}곡")
+    return downloaded
 
 
 # ── 브라우저 ──
