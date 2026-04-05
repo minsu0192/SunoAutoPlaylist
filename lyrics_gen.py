@@ -110,56 +110,79 @@ def generate_song_content(
         if index > 0 else ""
     )
 
-    prompt = f"""당신은 Seoul Diary Playlist 채널의 전속 작사가입니다.
-감성적이고 퀄리티 높은 노래를 작곡해주세요.
+    prompt = f"""You are the exclusive songwriter for "Seoul Diary Playlist," a YouTube channel that creates cinematic, emotionally rich music inspired by the streets, seasons, and stories of Seoul. Your songs have been streamed by hundreds of thousands of listeners who come for the atmosphere — the feeling of walking through rain-soaked alleys, watching city lights from a rooftop café, or sitting alone on a park bench as autumn leaves fall.
 
-═══════════════════════════════════════
-키워드: {keyword}
-{lang_instruction}
-이 곡의 감정 톤: {chosen_tone}
-이 곡의 장르: {chosen_genre}
-제목 스타일: {chosen_title_style}
-랜덤 시드: {random_seed}
+Your job: write ONE complete song based on the keyword below. Every song you write should feel like a scene from a film — vivid, specific, and emotionally honest.
+
+═══════════════════════════════════════════════════
+KEYWORD: {keyword}
+LANGUAGE: {language}
+EMOTIONAL TONE: {chosen_tone}
+GENRE: {chosen_genre}
+TITLE STYLE: {chosen_title_style}
+RANDOM SEED: {random_seed}
 {variety_note}
-═══════════════════════════════════════
+═══════════════════════════════════════════════════
 
-반드시 아래 JSON 형식으로만 응답하세요:
+Respond with ONLY this JSON (no other text):
 {{
-  "title": "노래 제목",
-  "lyrics": "가사",
-  "style": "Suno 스타일 태그"
+  "title": "song title",
+  "lyrics": "full lyrics",
+  "style": "Suno style tags"
 }}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[제목 규칙]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 이 곡의 제목 스타일: {chosen_title_style}
-- 위 스타일을 참고하되 독창적으로 만드세요
-- 키워드를 그대로 제목에 넣지 마세요
-- 3~6단어, 짧고 임팩트 있게
-- 매번 완전히 다른 제목이어야 합니다
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TITLE RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Follow this title style: {chosen_title_style}
+- 3~6 words, memorable and evocative
+- Do NOT use the keyword "{keyword}" literally — transform it poetically
+- Avoid generic titles like "Beautiful Day" or "Love Song"
+- Think of titles that make someone curious enough to click:
+  Good: "Neon Puddles After Midnight", "The Café Closes at Dawn"
+  Bad: "Sad Autumn Song", "Whispers of Love"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[가사 규칙 — 매우 중요!]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 구조: [Verse 1] → [Chorus] → [Verse 2] → [Chorus] → [Bridge] → [Chorus] → [Outro]
-- 각 섹션 3~4줄 (너무 길면 노래가 5분을 넘김)
-- 총 가사 길이: 800~1200자 이내 (5분 이하 곡이 되도록)
-- [Chorus]는 반복 가능하지만 가사가 동일해야 합니다
-- 감정선: Verse에서 이야기 → Chorus에서 폭발 → Bridge에서 전환 → Outro에서 여운
-- 키워드의 감성을 녹여서, 구체적인 장면이 떠오르는 가사
-- 진부한 표현 피하기 (love, heart, soul 남발 금지)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LYRICS RULES (CRITICAL — READ CAREFULLY)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{lang_instruction}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[스타일 규칙]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- Suno.com의 "Style of Music" 입력용 (영어, 콤마 구분)
-- 반드시 "{chosen_genre}" 계열 포함
-- "{chosen_tone}" 분위기 반영
-- 구체적 악기/사운드 1~2개 포함 (예: soft piano, muted trumpet, fingerpicked guitar)
-- 50자 이내
+STRUCTURE (follow this exactly):
+[Verse 1] — 4 lines. Set the scene. Where are we? What do we see/hear/smell?
+[Chorus] — 3~4 lines. The emotional core. Catchy, singable, repeatable.
+[Verse 2] — 4 lines. Deepen the story. What changed? What do we feel now?
+[Chorus] — Same lyrics as first chorus.
+[Bridge] — 2~3 lines. A shift — new perspective, confession, or turning point.
+[Chorus] — Same lyrics again.
+[Outro] — 1~2 lines. A lingering final image. Leave the listener wanting more.
 
-JSON 외 다른 텍스트는 절대 포함하지 마세요."""
+QUALITY GUIDELINES:
+- Total lyrics: 600~1000 characters (this produces a 3~4 minute song on Suno)
+- Each line should paint a SPECIFIC image, not abstract feelings
+  Good: "Steam rises from the cup you left behind"
+  Bad: "I feel so sad without you here"
+- Use sensory language: colors, textures, temperatures, sounds
+- The chorus should have a melodic rhythm — read it aloud, it should flow
+- Avoid overused words: whisper, echo, fade, glow, heart, soul (unless truly fitting)
+- Tell a mini-story: beginning (Verse 1) → middle (Verse 2) → twist (Bridge) → end (Outro)
+- Reference real places, objects, moments — make it feel LIVED, not written
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STYLE RULES (for Suno.com "Style of Music" input)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- English, comma-separated tags, MAX 50 characters
+- MUST include a variation of "{chosen_genre}"
+- MUST reflect the "{chosen_tone}" mood
+- Include 1~2 specific instruments or production elements:
+  Examples: "muted trumpet", "Rhodes piano", "tape-saturated drums",
+  "fingerpicked nylon guitar", "vinyl crackle", "soft brush drums",
+  "warm analog synth", "upright bass pizzicato"
+- Think about what a LISTENER would search for, not what a musician would write
+  Good: "jazz pop, warm, muted trumpet, late night café vibes"
+  Bad: "Cmaj7 progression with ii-V-I turnaround"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REMEMBER: Output ONLY the JSON. No explanations, no markdown, no extra text."""
 
     try:
         response = _call_claude(api_key, prompt)
