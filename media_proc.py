@@ -39,7 +39,7 @@ def make_thumbnail(
     bg_image: Path,
     title: str,
     output_path: Path,
-    channel_name: str = "Seoul Diary\nPlaylist",
+    channel_name: str = "Seoul Diary Playlist",
     width: int = 1920,
     height: int = 1080,
 ) -> Path:
@@ -58,11 +58,11 @@ def make_thumbnail(
 
     draw = ImageDraw.Draw(img)
 
-    # 채널명 폰트 (essential; 스타일 — 큰 볼드)
+    # 채널명 폰트 (essential; 스타일 — 큰 볼드, 한 줄)
     try:
-        font_big = ImageFont.truetype(_FONT_BOLD, 90)
+        font_big = ImageFont.truetype(_FONT_BOLD, 120)
     except Exception:
-        font_big = ImageFont.truetype(_FONT_KOREAN, 90)
+        font_big = ImageFont.truetype(_FONT_KOREAN, 120)
 
     # 채널명 텍스트 (줄바꿈 지원)
     lines = channel_name.split("\n")
