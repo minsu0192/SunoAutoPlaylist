@@ -188,8 +188,8 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
     - 실패한 곡만 재시도, 성공한 곡은 절대 다시 안 건드림
     - 이미 받은 파일 수를 기준으로 추가 다운로드 필요 여부 판단
     """
-    _log("곡 생성 대기 시작 (150초)")
-    for _ in range(30):
+    _log("곡 생성 대기 시작 (180초 = 3분)")
+    for _ in range(36):  # 5초 × 36 = 180초
         _check_stop()
         time.sleep(5)
 

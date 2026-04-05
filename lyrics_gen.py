@@ -74,48 +74,92 @@ def generate_song_content(
     )
 
     import random
-    # 매번 다른 톤/장르를 랜덤 지정
+
+    # 매번 다른 조합을 랜덤으로 배정해서 같은 결과가 나올 수 없게 함
     tone_pool = [
         "hopeful and bright", "melancholic and dreamy", "upbeat and groovy",
         "calm and meditative", "passionate and intense", "playful and quirky",
         "dark and moody", "warm and cozy", "ethereal and floating",
         "funky and bold", "tender and delicate", "rebellious and raw",
         "cinematic and grand", "minimal and stripped", "jazzy and smooth",
+        "nostalgic and bittersweet", "cheerful and sunny", "mysterious and hypnotic",
     ]
     genre_pool = [
         "indie pop", "jazz pop", "lo-fi hip hop", "R&B soul", "acoustic folk",
         "synth pop", "bossa nova", "dream pop", "soft rock", "neo soul",
         "city pop", "electro swing", "ambient", "bedroom pop", "funk",
+        "shoegaze", "trip hop", "progressive pop", "chamber pop", "afrobeat",
+    ]
+    title_style_pool = [
+        "한 단어 제목 (예: Bloom, Driftwood, Mirage)",
+        "장소 + 감정 (예: Rooftop Melancholy, Subway Daydream)",
+        "시간 + 행동 (예: 3AM Confessions, Sunday Morning Rewind)",
+        "색깔 + 명사 (예: Crimson Letters, Silver Lining Rain)",
+        "의인화 (예: The Moon Wrote Back, Clouds Don't Apologize)",
+        "질문형 (예: Did You Hear the Rain?, Where Do Lost Songs Go?)",
+        "대화체 (예: Hey, It's Me Again / Don't Look Back Now)",
+        "감각 묘사 (예: Cinnamon Air, Velvet Horizons)",
     ]
     chosen_tone = random.choice(tone_pool)
     chosen_genre = random.choice(genre_pool)
+    chosen_title_style = random.choice(title_style_pool)
+    random_seed = random.randint(1000, 9999)
 
     variety_note = (
-        f"이것은 {index + 1}번째 버전입니다. 이전 버전과 완전히 다른 제목, 다른 분위기, 다른 가사로 작성하세요."
+        f"\n⚠️ 이것은 {index + 1}번째 곡입니다. 이전 곡과 완전히 다른 제목, 다른 분위기, 다른 가사를 쓰세요."
         if index > 0 else ""
     )
 
-    prompt = f"""당신은 전문 작사가입니다. 아래 키워드를 바탕으로 노래 제목, 가사, 음악 스타일을 만들어주세요.
+    prompt = f"""당신은 Seoul Diary Playlist 채널의 전속 작사가입니다.
+감성적이고 퀄리티 높은 노래를 작곡해주세요.
 
+═══════════════════════════════════════
 키워드: {keyword}
 {lang_instruction}
-{variety_note}
-
-이 곡의 톤: {chosen_tone}
+이 곡의 감정 톤: {chosen_tone}
 이 곡의 장르: {chosen_genre}
+제목 스타일: {chosen_title_style}
+랜덤 시드: {random_seed}
+{variety_note}
+═══════════════════════════════════════
 
 반드시 아래 JSON 형식으로만 응답하세요:
 {{
-  "title": "창의적인 노래 제목",
-  "lyrics": "완성된 가사 (최소 4절, 각 절 4줄 이상, [Verse 1], [Chorus] 등 섹션 레이블)",
-  "style": "음악 스타일 (영어, 콤마 구분, 50자 이내)"
+  "title": "노래 제목",
+  "lyrics": "가사",
+  "style": "Suno 스타일 태그"
 }}
 
-[중요 규칙]
-- 제목은 매번 완전히 다르고 독특해야 합니다. 이전에 쓴 제목과 겹치면 안 됩니다.
-- style에는 반드시 "{chosen_genre}" 계열을 포함하세요.
-- "{keyword}" 키워드를 제목에 그대로 넣지 말고 감성적으로 변형하세요.
-- JSON 외 다른 텍스트는 절대 포함하지 마세요."""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[제목 규칙]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 이 곡의 제목 스타일: {chosen_title_style}
+- 위 스타일을 참고하되 독창적으로 만드세요
+- 키워드를 그대로 제목에 넣지 마세요
+- 3~6단어, 짧고 임팩트 있게
+- 매번 완전히 다른 제목이어야 합니다
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[가사 규칙 — 매우 중요!]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 구조: [Verse 1] → [Chorus] → [Verse 2] → [Chorus] → [Bridge] → [Chorus] → [Outro]
+- 각 섹션 3~4줄 (너무 길면 노래가 5분을 넘김)
+- 총 가사 길이: 800~1200자 이내 (5분 이하 곡이 되도록)
+- [Chorus]는 반복 가능하지만 가사가 동일해야 합니다
+- 감정선: Verse에서 이야기 → Chorus에서 폭발 → Bridge에서 전환 → Outro에서 여운
+- 키워드의 감성을 녹여서, 구체적인 장면이 떠오르는 가사
+- 진부한 표현 피하기 (love, heart, soul 남발 금지)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[스타일 규칙]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Suno.com의 "Style of Music" 입력용 (영어, 콤마 구분)
+- 반드시 "{chosen_genre}" 계열 포함
+- "{chosen_tone}" 분위기 반영
+- 구체적 악기/사운드 1~2개 포함 (예: soft piano, muted trumpet, fingerpicked guitar)
+- 50자 이내
+
+JSON 외 다른 텍스트는 절대 포함하지 마세요."""
 
     try:
         response = _call_claude(api_key, prompt)
