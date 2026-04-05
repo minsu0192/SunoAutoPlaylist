@@ -407,18 +407,37 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     _log("Create 클릭")
 
     new = _wait_and_download(actions, dl)
-    # 다운로드된 파일을 안전한 위치로 이동 (다음 세션과 섞이지 않도록)
-    saved: list[Path] = []
+
+    # ── 다운로드 결과 확인 ──
+    _log(f"다운로드 결과: {len(new)}곡")
+    for f in new:
+        _log(f"  - {f.name} ({f.stat().st_size / 1024:.0f} KB)")
+
+    # ── 필터 적용 (shorter/longer/both) ──
+    if len(new) >= 2 and vocal_pick != "both":
+        _log(f"필터 적용: {vocal_pick}")
+    selected = _pick_mp3s(new[:2], vocal_pick)
+    _log(f"선택된 곡: {[f.name for f in selected]}")
+
+    # ── 선택된 곡을 completed/로 이동 ──
     safe_dir = dl.parent / "completed"
     safe_dir.mkdir(parents=True, exist_ok=True)
-    for f in new:
+    result: list[Path] = []
+    for f in selected:
         if f.exists():
             dest = safe_dir / f"{int(time.time())}_{f.name}"
             f.rename(dest)
-            saved.append(dest)
-            _log(f"파일 이동: {f.name} → completed/")
-    result = _pick_mp3s(saved[:2], vocal_pick)
-    _log(f"세션 완료: {len(result)}곡 (pick={vocal_pick})")
+            result.append(dest)
+            _log(f"보관: {f.name} → completed/")
+
+    # ── 나머지 파일 전부 삭제 (다음 세션에 영향 안 주도록) ──
+    leftover = list(dl.glob("*.mp3"))
+    if leftover:
+        for f in leftover:
+            _log(f"삭제: {f.name}")
+            f.unlink()
+
+    _log(f"=== 세션 완료: {len(result)}곡 선택 (pick={vocal_pick}) ===")
     return result
 
 
@@ -454,15 +473,29 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     _log("Create 클릭")
 
     new = _wait_and_download(actions, dl)
-    saved: list[Path] = []
+
+    _log(f"다운로드 결과: {len(new)}곡")
+    for f in new:
+        _log(f"  - {f.name} ({f.stat().st_size / 1024:.0f} KB)")
+
+    selected = _pick_mp3s(new[:2], pick)
+    _log(f"선택된 곡: {[f.name for f in selected]}")
+
     safe_dir = dl.parent / "completed"
     safe_dir.mkdir(parents=True, exist_ok=True)
-    for f in new:
+    result: list[Path] = []
+    for f in selected:
         if f.exists():
             dest = safe_dir / f"{int(time.time())}_{f.name}"
             f.rename(dest)
-            saved.append(dest)
-            _log(f"파일 이동: {f.name} → completed/")
-    result = _pick_mp3s(saved[:2], pick)
-    _log(f"Instrumental 완료: {len(result)}곡")
+            result.append(dest)
+            _log(f"보관: {f.name} → completed/")
+
+    leftover = list(dl.glob("*.mp3"))
+    if leftover:
+        for f in leftover:
+            _log(f"삭제: {f.name}")
+            f.unlink()
+
+    _log(f"=== Instrumental 완료: {len(result)}곡 (pick={pick}) ===")
     return result
