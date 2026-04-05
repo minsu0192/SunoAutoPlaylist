@@ -33,7 +33,6 @@ pyinstaller \
   --collect-all "tkinterdnd2" \
   --collect-all "customtkinter" \
   --hidden-import "pyautogui" \
-  --hidden-import "pyperclip" \
   --hidden-import "anthropic" \
   --hidden-import "Quartz" \
   --hidden-import "googleapiclient" \

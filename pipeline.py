@@ -144,14 +144,16 @@ class Pipeline:
         setup_browser()
 
         all_mp3s: list[Path] = []
-        vocal_mp3s: list[Path] = []
+        kr_mp3s: list[Path] = []
+        en_mp3s: list[Path] = []
         inst_mp3s: list[Path] = []
         current = 0
 
-        # 보컬 세션
-        for idx, song_info in enumerate(sessions):
+        # 한국어 세션
+        kr_session_list = sessions[:kr_sessions]
+        for idx, song_info in enumerate(kr_session_list):
             current += 1
-            _progress(f"보컬 세션 {current}/{total_sessions}...", 3, total_steps)
+            _progress(f"한국어 세션 {current}/{total_sessions}...", 3, total_steps)
             _check_stop()
             try:
                 mp3s = run_suno_session(
@@ -160,20 +162,39 @@ class Pipeline:
                     title=song_info["title"],
                     vocal_pick=cfg.vocal_pick,
                 )
-                vocal_mp3s.extend(mp3s)
+                kr_mp3s.extend(mp3s)
             except Exception as e:
-                raise RuntimeError(f"보컬 세션 {idx + 1} 실패: {e}") from e
+                raise RuntimeError(f"한국어 세션 {idx + 1} 실패: {e}") from e
 
-        # 보컬곡 수 트리밍 (요청한 수만큼만)
-        requested_vocal = cfg.korean_songs + cfg.english_songs
-        if len(vocal_mp3s) > requested_vocal and requested_vocal > 0:
-            excess = vocal_mp3s[requested_vocal:]
-            vocal_mp3s = vocal_mp3s[:requested_vocal]
-            for f in excess:
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
+        # 영어 세션
+        en_session_list = sessions[kr_sessions:]
+        for idx, song_info in enumerate(en_session_list):
+            current += 1
+            _progress(f"영어 세션 {current}/{total_sessions}...", 3, total_steps)
+            _check_stop()
+            try:
+                mp3s = run_suno_session(
+                    lyrics=song_info["lyrics"],
+                    style=song_info["style"],
+                    title=song_info["title"],
+                    vocal_pick=cfg.vocal_pick,
+                )
+                en_mp3s.extend(mp3s)
+            except Exception as e:
+                raise RuntimeError(f"영어 세션 {idx + 1} 실패: {e}") from e
+
+        # 언어별 트리밍 (요청한 수만큼만)
+        def _trim(mp3s: list[Path], want: int) -> list[Path]:
+            if len(mp3s) > want > 0:
+                for f in mp3s[want:]:
+                    try: f.unlink()
+                    except Exception: pass
+                return mp3s[:want]
+            return mp3s
+
+        kr_mp3s = _trim(kr_mp3s, cfg.korean_songs)
+        en_mp3s = _trim(en_mp3s, cfg.english_songs)
+        vocal_mp3s = kr_mp3s + en_mp3s
 
         # Instrumental 세션
         for i in range(inst_sessions):

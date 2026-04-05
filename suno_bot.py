@@ -14,7 +14,6 @@ import time
 from pathlib import Path
 
 import pyautogui
-import pyperclip
 
 # CoreGraphics 시도 — 번들/권한 문제면 pyautogui fallback
 _USE_CG = False
