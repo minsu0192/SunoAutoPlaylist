@@ -322,7 +322,12 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     dl = SUNO_DL_DIR
     _clean_dl_dir(dl)  # 이전 세션 파일 정리
     focus_chrome()
-    time.sleep(5)  # 페이지 완전 로딩 대기
+    time.sleep(2)
+
+    # Suno 페이지 새로고침 — 이전 세션 곡이 남아있으면 안 됨
+    _log("페이지 새로고침 (이전 세션 곡 제거)")
+    _key_code(15, using="command down")  # Cmd+R
+    time.sleep(7)  # 페이지 로딩 대기
 
     _log(f"보컬 세션 시작: {title}")
     _click(*_coord(actions, "advanced_tab"), delay=0.5)
@@ -365,7 +370,12 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     dl = SUNO_DL_DIR
     _clean_dl_dir(dl)  # 이전 세션 파일 정리
     focus_chrome()
-    time.sleep(5)  # 페이지 완전 로딩 대기
+    time.sleep(2)
+
+    # Suno 페이지 새로고침
+    _log("페이지 새로고침 (이전 세션 곡 제거)")
+    _key_code(15, using="command down")  # Cmd+R
+    time.sleep(7)
 
     _log(f"Instrumental 세션 시작: {description[:50] if description else '(설명 없음)'}")
     _click(*_coord(actions, "advanced_tab") if "advanced_tab" in actions

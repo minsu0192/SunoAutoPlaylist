@@ -73,7 +73,8 @@ def generate_song_content(
     )
 
     variety_note = (
-        f"이것은 {index + 1}번째 버전입니다. 이전 버전과 다른 분위기로 작성하세요."
+        f"이것은 {index + 1}번째 버전입니다. 이전 버전과 완전히 다른 제목, 다른 분위기, 다른 가사, 다른 장르로 작성하세요. "
+        f"절대 이전 버전과 비슷한 가사나 제목을 쓰지 마세요. 랜덤 시드: {hash(f'{keyword}_{index}') % 10000}"
         if index > 0
         else ""
     )
