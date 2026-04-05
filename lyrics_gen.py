@@ -212,9 +212,35 @@ Reply with ONLY the description text, nothing else."""
         return keyword
 
 
+def _keyword_to_english(keyword: str) -> str:
+    """한글 키워드를 Pixabay 검색용 영어로 변환 (간단한 매핑 + 원본 시도)"""
+    # 한글이 포함되어 있으면 감성적 영어 키워드로 변환
+    has_korean = any('\uAC00' <= c <= '\uD7A3' for c in keyword)
+    if not has_korean:
+        return keyword
+
+    # 주요 감성 키워드 매핑
+    mappings = {
+        "봄": "spring flowers", "여름": "summer ocean", "가을": "autumn leaves",
+        "겨울": "winter snow", "바람": "wind nature", "비": "rain city",
+        "밤": "night city lights", "새벽": "dawn sky", "노을": "sunset",
+        "바다": "ocean waves", "하늘": "sky clouds", "별": "starry night",
+        "꽃": "flower field", "도시": "city night", "거리": "street night",
+        "카페": "cafe aesthetic", "창문": "window rain", "숲": "forest light",
+        "사랑": "love aesthetic", "그리움": "nostalgia vintage", "감성": "aesthetic mood",
+        "드라이브": "night drive", "여행": "travel scenery", "추억": "memories vintage",
+    }
+    parts = []
+    for k, v in mappings.items():
+        if k in keyword:
+            parts.append(v)
+    return " ".join(parts) if parts else "aesthetic mood landscape"
+
+
 def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | None:
     """
     Pixabay에서 키워드 기반 이미지를 다운로드한다.
+    한글 키워드는 영어로 변환하여 검색.
 
     Returns:
         저장된 이미지 Path, 또는 실패 시 None
@@ -226,7 +252,10 @@ def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | No
         return None
 
     save_dir.mkdir(parents=True, exist_ok=True)
-    query = urllib.parse.quote(keyword)
+
+    # 한글 → 영어 변환
+    search_term = _keyword_to_english(keyword)
+    query = urllib.parse.quote(search_term)
     url = (
         f"https://pixabay.com/api/?key={api_key}&q={query}"
         f"&image_type=photo&orientation=horizontal&per_page=5&safesearch=true"
@@ -249,7 +278,9 @@ def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | No
         safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in keyword)[:30]
         save_path = save_dir / f"{safe_name}{ext}"
 
-        urllib.request.urlretrieve(img_url, save_path)
+        req = urllib.request.Request(img_url, headers={"User-Agent": "SunoAutoPlaylist/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            save_path.write_bytes(resp.read())
         return save_path
 
     except Exception:

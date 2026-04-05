@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 from config import Config
 from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image
-from media_proc import make_video
+from media_proc import make_video, make_thumbnail
 import suno_bot
 from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser, _log
 from yt_upload import YouTubeUploader
@@ -238,12 +238,27 @@ class Pipeline:
             _progress(f"완료! {len(all_mp3s)}곡 다운로드됨", total_steps, total_steps)
             return
 
-        # ── [4] 영상 생성 ─────────────────────────────────────────
-        _log(f"=== MP4 영상 생성 시작 ({len(all_mp3s)}곡 → 영상) ===")
-        _progress(f"MP4 영상 생성 중... (0/{len(all_mp3s)})", 4, total_steps)
+        # ── [4] 썸네일 + 영상 생성 ────────────────────────────────
         _check_stop()
         output_base = Path(cfg.output_dir) / self._safe_dirname(keyword)
         output_base.mkdir(parents=True, exist_ok=True)
+
+        # YouTube 제목으로 썸네일 생성
+        yt_title = yt_info["title"] if yt_info else keyword
+        _log(f"=== 썸네일 생성: {yt_title} ===")
+        _progress("썸네일 생성 중...", 4, total_steps)
+        thumb_path = output_base / "thumbnail.jpg"
+        try:
+            make_thumbnail(image_path, yt_title, thumb_path)
+            _log(f"썸네일 완료: {thumb_path.name}")
+            # 이후 영상에 썸네일 이미지 사용
+            video_image = thumb_path
+        except Exception as e:
+            _log(f"썸네일 생성 실패, 원본 이미지 사용: {e}")
+            video_image = image_path
+
+        _log(f"=== MP4 영상 생성 시작 ({len(all_mp3s)}곡 → 영상) ===")
+        _progress(f"MP4 영상 생성 중... (0/{len(all_mp3s)})", 4, total_steps)
 
         mp4_files: list[Path] = []
         for idx, mp3 in enumerate(all_mp3s):
@@ -252,7 +267,7 @@ class Pipeline:
             _log(f"영상 생성: {mp3.name} → MP4")
             output_mp4 = output_base / f"{self._safe_filename(keyword)}_{idx + 1:02d}.mp4"
             try:
-                mp4_files.append(make_video(mp3, image_path, output_mp4))
+                mp4_files.append(make_video(mp3, video_image, output_mp4))
                 _log(f"영상 완료: {output_mp4.name}")
             except Exception as e:
                 raise RuntimeError(f"영상 생성 실패 ({mp3.name}): {e}") from e
