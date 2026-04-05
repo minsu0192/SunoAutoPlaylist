@@ -256,7 +256,7 @@ class App(ctk.CTk):
         self._scroll.pack(fill="both", expand=True, padx=20, pady=5)
 
         # ── 프로그래스 바 ──
-        prog_frame = ctk.CTkFrame(page, fg_color="transparent", height=40)
+        prog_frame = ctk.CTkFrame(page, fg_color="transparent", height=55)
         prog_frame.pack(fill="x", padx=20, pady=(0, 4))
         prog_frame.pack_propagate(False)
 
@@ -264,7 +264,7 @@ class App(ctk.CTk):
         self._progress_bar.pack(fill="x", pady=(4, 0))
         self._progress_bar.set(0)
 
-        self._progress_label = ctk.CTkLabel(prog_frame, text="", font=("", 11), text_color="gray50")
+        self._progress_label = ctk.CTkLabel(prog_frame, text="", font=("", 11), text_color="gray50", wraplength=500, justify="left")
         self._progress_label.pack(fill="x", pady=(2, 0))
 
         # ── 하단 실행/중단 버튼 ──
@@ -566,15 +566,17 @@ class App(ctk.CTk):
     def _start_pipeline(self, item):
         self._running = True
         self._stop_flag.clear()
+        self._pipeline_step = ""  # 현재 파이프라인 단계
         self._btn_run.configure(state="disabled")
         self._btn_stop.configure(state="normal")
         self._queue.update_status(item["id"], STATUS_PROCESSING)
         self._refresh_queue()
+        self._start_live_log()  # 실시간 로그 표시 시작
 
         def _progress(step, cur, total):
             pct = cur / total if total else 0
+            self._pipeline_step = f"[{int(pct*100)}%] {step}"
             self.after(0, lambda: self._progress_bar.set(pct))
-            self.after(0, lambda: self._progress_label.configure(text=f"[{int(pct*100)}%] {step}"))
 
         def _run():
             from suno_bot import clear_log
@@ -590,6 +592,23 @@ class App(ctk.CTk):
                 self.after(0, lambda: self._on_error(str(e), tb))
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def _start_live_log(self):
+        """실행 중 2초마다 최신 로그를 프로그레스 라벨에 표시"""
+        if not self._running:
+            return
+        try:
+            from suno_bot import get_log
+            log = get_log()
+            if log:
+                last_line = log.strip().split("\n")[-1]
+                display = f"{self._pipeline_step}\n{last_line}"
+            else:
+                display = self._pipeline_step
+            self._progress_label.configure(text=display)
+        except Exception:
+            pass
+        self.after(2000, self._start_live_log)
 
     def _on_stop(self):
         self._stop_flag.set()

@@ -44,12 +44,17 @@ class Pipeline:
         # 이미지 없으면 Pixabay에서 자동 다운로드 시도
         if not image_path and scope in ("videos", "upload"):
             if cfg.pixabay_api_key:
+                _log("[Pixabay] 배경 이미지 검색 중...")
                 dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key,
                                           Path(cfg.output_dir) / "images")
                 if dl:
                     image_path = dl
+                    _log(f"[Pixabay] 이미지 다운로드 완료: {dl.name}")
+                else:
+                    _log("[Pixabay] 이미지를 찾지 못함")
             if not image_path:
-                scope = "songs"  # 이미지 못 구하면 곡만
+                _log("⚠️ 이미지 없음 → 곡 생성만 진행 (영상/업로드 생략)")
+                scope = "songs"
 
         def _progress(step: str, current: int, total: int) -> None:
             if progress_callback:
@@ -137,8 +142,10 @@ class Pipeline:
         sessions = [s for s in sessions if s is not None]
 
         # ── [3] Suno.com 자동화 ───────────────────────────────────
-        _progress("Suno.com 준비 중...", 3, total_steps)
+        _progress(f"Suno.com 준비 중... (총 {total_sessions}세션)", 3, total_steps)
         _check_stop()
+        _log(f"=== Suno 자동화 시작 (한국어 {kr_sessions}세션 / 영어 {en_sessions}세션 / Inst {inst_sessions}세션) ===")
+        _log(f"실행 범위: {scope} | vocal_pick: {cfg.vocal_pick}")
         setup_browser()
 
         all_mp3s: list[Path] = []
@@ -226,12 +233,14 @@ class Pipeline:
             )
 
         # ── scope: songs → 여기서 끝 ──────────────────────────────
+        _log(f"=== 곡 다운로드 완료: {len(all_mp3s)}곡 ===")
         if scope == "songs":
             _progress(f"완료! {len(all_mp3s)}곡 다운로드됨", total_steps, total_steps)
             return
 
         # ── [4] 영상 생성 ─────────────────────────────────────────
-        _progress("MP4 영상 생성 중...", 4, total_steps)
+        _log(f"=== MP4 영상 생성 시작 ({len(all_mp3s)}곡 → 영상) ===")
+        _progress(f"MP4 영상 생성 중... (0/{len(all_mp3s)})", 4, total_steps)
         _check_stop()
         output_base = Path(cfg.output_dir) / self._safe_dirname(keyword)
         output_base.mkdir(parents=True, exist_ok=True)
@@ -239,22 +248,28 @@ class Pipeline:
         mp4_files: list[Path] = []
         for idx, mp3 in enumerate(all_mp3s):
             _check_stop()
+            _progress(f"MP4 영상 생성 중... ({idx + 1}/{len(all_mp3s)})", 4, total_steps)
+            _log(f"영상 생성: {mp3.name} → MP4")
             output_mp4 = output_base / f"{self._safe_filename(keyword)}_{idx + 1:02d}.mp4"
             try:
                 mp4_files.append(make_video(mp3, image_path, output_mp4))
+                _log(f"영상 완료: {output_mp4.name}")
             except Exception as e:
                 raise RuntimeError(f"영상 생성 실패 ({mp3.name}): {e}") from e
 
+        _log(f"=== 영상 생성 완료: {len(mp4_files)}개 ===")
         if scope == "videos":
             _progress(f"완료! {len(mp4_files)}개 영상: {output_base}", total_steps, total_steps)
             return
 
         # ── [5] YouTube 업로드 ────────────────────────────────────
         if not cfg.youtube_client_secrets:
+            _log("YouTube client_secrets 미설정 → 업로드 생략")
             _progress(f"완료 (YouTube 미설정). 영상: {output_base}", total_steps, total_steps)
             return
 
-        _progress("YouTube 업로드 중...", 5, total_steps)
+        _log("=== YouTube 업로드 시작 ===")
+        _progress(f"YouTube 업로드 중... (0/{len(mp4_files)})", 5, total_steps)
         _check_stop()
         if yt_info is None:
             yt_info = {"title": keyword, "description": keyword, "tags": [keyword]}
@@ -264,6 +279,8 @@ class Pipeline:
         for idx, mp4 in enumerate(mp4_files):
             _check_stop()
             title = f"{yt_info['title']} [{idx + 1}/{len(mp4_files)}]"
+            _progress(f"YouTube 업로드 중... ({idx + 1}/{len(mp4_files)})", 5, total_steps)
+            _log(f"YouTube 업로드: {title}")
             try:
                 url = uploader.upload(
                     video_path=mp4, title=title,
@@ -271,9 +288,13 @@ class Pipeline:
                     playlist_id=cfg.youtube_playlist_id or "", privacy=cfg.youtube_privacy,
                 )
                 urls.append(url)
+                _log(f"업로드 완료: {url}")
+                if cfg.youtube_playlist_id:
+                    _log(f"플레이리스트에 추가됨: {cfg.youtube_playlist_id}")
             except Exception as e:
                 raise RuntimeError(f"YouTube 업로드 실패 ({mp4.name}): {e}") from e
 
+        _log(f"=== 전체 완료! {len(urls)}개 업로드 ===")
         _progress(f"완료! {len(urls)}개 업로드됨", total_steps, total_steps)
 
     def _validate(self, cfg: Config, image_path: Path | None) -> None:
