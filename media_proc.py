@@ -13,26 +13,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 
-# ── 한글 폰트 경로 (macOS) ──
-_FONT_PATH = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+# ── 폰트 경로 (macOS) ──
+_FONT_BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+_FONT_KOREAN = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
 
 
-def make_thumbnail(
-    bg_image: Path,
-    title: str,
-    output_path: Path,
-    channel_name: str = "Seoul Diary",
-    width: int = 1920,
-    height: int = 1080,
-) -> Path:
-    """
-    배경 이미지 위에 플레이리스트 제목 + 채널명을 오버레이한 썸네일 생성.
-
-    스타일: 어둡게 처리한 배경 + 중앙 큰 제목 + 하단 채널명
-    """
-    img = Image.open(bg_image).convert("RGB")
-
-    # 1920x1080 크롭/리사이즈
+def _crop_resize(img: Image.Image, width: int, height: int) -> Image.Image:
+    """이미지를 width x height로 크롭 + 리사이즈"""
     img_ratio = img.width / img.height
     target_ratio = width / height
     if img_ratio > target_ratio:
@@ -45,81 +32,60 @@ def make_thumbnail(
         new_h = int(new_w / target_ratio)
         top = (img.height - new_h) // 2
         img = img.crop((0, top, new_w, top + new_h))
-    img = img.resize((width, height), Image.LANCZOS)
+    return img.resize((width, height), Image.LANCZOS)
 
-    # 어두운 오버레이 (60% 투명도)
-    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 153))
+
+def make_thumbnail(
+    bg_image: Path,
+    title: str,
+    output_path: Path,
+    channel_name: str = "Seoul Diary\nPlaylist",
+    width: int = 1920,
+    height: int = 1080,
+) -> Path:
+    """
+    essential; 스타일 썸네일 생성.
+    큰 볼드 채널명 중앙 + 점선 구분선 + 밝은 배경
+    """
+    img = Image.open(bg_image).convert("RGB")
+    img = _crop_resize(img, width, height)
+
+    # 살짝만 어둡게 (20% — 텍스트 가독성용)
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 50))
     img = img.convert("RGBA")
     img = Image.alpha_composite(img, overlay)
     img = img.convert("RGB")
 
     draw = ImageDraw.Draw(img)
 
-    # 제목 폰트 (큰 사이즈, 볼드)
+    # 채널명 폰트 (essential; 스타일 — 큰 볼드)
     try:
-        font_title = ImageFont.truetype(_FONT_PATH, 58, index=5)  # index=5 = Bold
+        font_big = ImageFont.truetype(_FONT_BOLD, 90)
     except Exception:
-        font_title = ImageFont.truetype(_FONT_PATH, 58)
+        font_big = ImageFont.truetype(_FONT_KOREAN, 90)
 
-    # 채널명 폰트 (작은 사이즈)
-    try:
-        font_channel = ImageFont.truetype(_FONT_PATH, 28, index=0)  # Regular
-    except Exception:
-        font_channel = ImageFont.truetype(_FONT_PATH, 28)
-
-    # 플레이리스트 라벨
-    try:
-        font_label = ImageFont.truetype(_FONT_PATH, 22, index=0)
-    except Exception:
-        font_label = ImageFont.truetype(_FONT_PATH, 22)
-
-    # ── 텍스트 배치 ──
-
-    # "PLAYLIST" 라벨 (상단 중앙)
-    label_text = "P L A Y L I S T"
-    label_bbox = draw.textbbox((0, 0), label_text, font=font_label)
-    label_w = label_bbox[2] - label_bbox[0]
-    draw.text(((width - label_w) // 2, height // 2 - 120), label_text,
-              fill=(200, 200, 200), font=font_label)
-
-    # 제목 (중앙) - 긴 제목은 줄바꿈
-    max_title_width = width - 200
-    lines = []
-    current = ""
-    for char in title:
-        test = current + char
-        bbox = draw.textbbox((0, 0), test, font=font_title)
-        if bbox[2] - bbox[0] > max_title_width:
-            lines.append(current)
-            current = char
-        else:
-            current = test
-    if current:
-        lines.append(current)
-
-    line_height = 72
-    total_h = line_height * len(lines)
-    y_start = (height - total_h) // 2 - 20
+    # 채널명 텍스트 (줄바꿈 지원)
+    lines = channel_name.split("\n")
+    line_height = 105
+    total_text_h = line_height * len(lines)
+    y_start = (height - total_text_h) // 2 - 15
 
     for i, line in enumerate(lines):
-        bbox = draw.textbbox((0, 0), line, font=font_title)
+        bbox = draw.textbbox((0, 0), line, font=font_big)
         line_w = bbox[2] - bbox[0]
-        draw.text(((width - line_w) // 2, y_start + i * line_height), line,
-                  fill="white", font=font_title)
+        x = (width - line_w) // 2
+        y = y_start + i * line_height
+        # 텍스트 그림자 (가독성)
+        draw.text((x + 3, y + 3), line, fill=(0, 0, 0, 80), font=font_big)
+        draw.text((x, y), line, fill="white", font=font_big)
 
-    # 구분선
-    line_y = y_start + total_h + 20
-    line_half = 60
-    cx = width // 2
-    draw.line([(cx - line_half, line_y), (cx + line_half, line_y)],
-              fill=(180, 180, 180), width=2)
-
-    # 채널명 (하단 중앙)
-    ch_text = f"♫ {channel_name}"
-    ch_bbox = draw.textbbox((0, 0), ch_text, font=font_channel)
-    ch_w = ch_bbox[2] - ch_bbox[0]
-    draw.text(((width - ch_w) // 2, line_y + 25), ch_text,
-              fill=(180, 180, 180), font=font_channel)
+    # 점선 구분선 (essential; 스타일)
+    dotline_y = y_start + total_text_h + 10
+    dot_spacing = 8
+    dot_width = 300
+    dot_start_x = (width - dot_width) // 2
+    for x in range(dot_start_x, dot_start_x + dot_width, dot_spacing):
+        draw.rectangle([x, dotline_y, x + 3, dotline_y + 3], fill=(255, 255, 255, 200))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path, quality=95)
