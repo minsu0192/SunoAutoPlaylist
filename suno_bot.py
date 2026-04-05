@@ -298,6 +298,17 @@ def check_accessibility() -> bool:
 
 # ── 공개 함수 ──
 
+def _clean_dl_dir(dl_dir: Path) -> None:
+    """다운로드 폴더를 비워서 이전 세션 파일이 간섭하지 않도록 한다."""
+    if dl_dir.exists():
+        for f in dl_dir.iterdir():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+    dl_dir.mkdir(parents=True, exist_ok=True)
+
+
 def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "longer") -> list[Path]:
     actions = load_actions()
     required = ["advanced_tab", "lyrics_input", "style_input",
@@ -309,7 +320,7 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
     dl = SUNO_DL_DIR
-    dl.mkdir(parents=True, exist_ok=True)
+    _clean_dl_dir(dl)  # 이전 세션 파일 정리
     focus_chrome()
     time.sleep(5)  # 페이지 완전 로딩 대기
 
@@ -327,7 +338,17 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     _log("Create 클릭")
 
     new = _wait_and_download(actions, dl)
-    result = _pick_mp3s(new[:2], vocal_pick)
+    # 다운로드된 파일을 안전한 위치로 이동 (다음 세션과 섞이지 않도록)
+    saved: list[Path] = []
+    safe_dir = dl.parent / "completed"
+    safe_dir.mkdir(parents=True, exist_ok=True)
+    for f in new:
+        if f.exists():
+            dest = safe_dir / f"{int(time.time())}_{f.name}"
+            f.rename(dest)
+            saved.append(dest)
+            _log(f"파일 이동: {f.name} → completed/")
+    result = _pick_mp3s(saved[:2], vocal_pick)
     _log(f"세션 완료: {len(result)}곡 (pick={vocal_pick})")
     return result
 
@@ -342,7 +363,7 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
     dl = SUNO_DL_DIR
-    dl.mkdir(parents=True, exist_ok=True)
+    _clean_dl_dir(dl)  # 이전 세션 파일 정리
     focus_chrome()
     time.sleep(5)  # 페이지 완전 로딩 대기
 
@@ -359,6 +380,15 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     _log("Create 클릭")
 
     new = _wait_and_download(actions, dl)
-    result = _pick_mp3s(new[:2], pick)
+    saved: list[Path] = []
+    safe_dir = dl.parent / "completed"
+    safe_dir.mkdir(parents=True, exist_ok=True)
+    for f in new:
+        if f.exists():
+            dest = safe_dir / f"{int(time.time())}_{f.name}"
+            f.rename(dest)
+            saved.append(dest)
+            _log(f"파일 이동: {f.name} → completed/")
+    result = _pick_mp3s(saved[:2], pick)
     _log(f"Instrumental 완료: {len(result)}곡")
     return result
