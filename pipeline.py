@@ -158,7 +158,8 @@ class Pipeline:
         kr_session_list = sessions[:kr_sessions]
         for idx, song_info in enumerate(kr_session_list):
             current += 1
-            _progress(f"한국어 세션 {current}/{total_sessions}...", 3, total_steps)
+            _progress(f"[세션 {current}/{total_sessions}] 한국어 새 곡 생성 중...", 3, total_steps)
+            _log(f"=== 세션 {current}/{total_sessions}: 한국어 새 가사 — {song_info['title']} ===")
             _check_stop()
             try:
                 mp3s = run_suno_session(
@@ -175,7 +176,8 @@ class Pipeline:
         en_session_list = sessions[kr_sessions:]
         for idx, song_info in enumerate(en_session_list):
             current += 1
-            _progress(f"영어 세션 {current}/{total_sessions}...", 3, total_steps)
+            _progress(f"[세션 {current}/{total_sessions}] 영어 새 곡 생성 중...", 3, total_steps)
+            _log(f"=== 세션 {current}/{total_sessions}: 영어 새 가사 — {song_info['title']} ===")
             _check_stop()
             try:
                 mp3s = run_suno_session(
