@@ -55,7 +55,7 @@ def _patch_paste(root):
 
 
 # ================================================================== #
-# 큐 카드 (QueueCard) - 디자인 개선                                     #
+# 큐 카드 (QueueCard)                                                  #
 # ================================================================== #
 
 class QueueCard(ctk.CTkFrame):
@@ -74,20 +74,20 @@ class QueueCard(ctk.CTkFrame):
         self._on_select = on_select
         self._on_delete = on_delete
 
-        # 전체 카드 클릭 이벤트
-        for widget in [self]:
-             widget.bind("<Button-1>", self._click)
+        self.bind("<Button-1>", self._click)
 
         # 상태 아이콘/텍스트
         status_frame = ctk.CTkFrame(self, fg_color="transparent", width=80)
         status_frame.pack(side="left", padx=(15, 5))
-        
+
         self.status_label = ctk.CTkLabel(status_frame, text=status_text, font=("", 12, "bold"), text_color=color)
         self.status_label.pack(side="left")
+        self.status_label.bind("<Button-1>", self._click)
 
         # 키워드
         self.kw_label = ctk.CTkLabel(self, text=item["keyword"], font=("", 14, "bold"), anchor="w")
         self.kw_label.pack(side="left", fill="x", expand=True, padx=10)
+        self.kw_label.bind("<Button-1>", self._click)
 
         # 작업 버튼 프레임
         self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -96,8 +96,8 @@ class QueueCard(ctk.CTkFrame):
         if item["status"] == STATUS_DONE:
             ctk.CTkButton(self.btn_frame, text="📂", width=32, height=32, fg_color="gray25", hover_color="gray35",
                            command=self._open_folder).pack(side="left", padx=2)
-        
-        ctk.CTkButton(self.btn_frame, text="🗑", width=32, height=32, fg_color="transparent", 
+
+        ctk.CTkButton(self.btn_frame, text="🗑", width=32, height=32, fg_color="transparent",
                        hover_color="#e74c3c", text_color="gray60",
                        command=self._delete).pack(side="left", padx=2)
 
@@ -110,7 +110,6 @@ class QueueCard(ctk.CTkFrame):
             self._on_delete(self.item["id"])
 
     def _open_folder(self):
-        # 결과 폴더 열기 (output_dir/{keyword})
         try:
             cfg = Config.load()
             path = Path(cfg.output_dir) / self.item["keyword"]
@@ -169,10 +168,10 @@ class App(ctk.CTk):
         logo.pack(pady=(30, 40))
 
         self.nav_btns = {}
-        for name, label, icon in [("generator", " 작업 생성", "🎵"), 
-                                  ("settings", " 설정 관리", "⚙️"), 
+        for name, label, icon in [("generator", " 작업 생성", "🎵"),
+                                  ("settings", " 설정 관리", "⚙️"),
                                   ("logs", " 실행 로그", "📜")]:
-            btn = ctk.CTkButton(self.sidebar, text=f"{icon}{label}", 
+            btn = ctk.CTkButton(self.sidebar, text=f"{icon}{label}",
                                  height=45, anchor="w", corner_radius=8,
                                  fg_color="transparent", text_color="gray70",
                                  hover_color="gray25",
@@ -183,19 +182,19 @@ class App(ctk.CTk):
         # 하단 정보
         info_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         info_frame.pack(side="bottom", fill="x", pady=20, padx=10)
-        
-        self.learn_btn = ctk.CTkButton(info_frame, text="UI 학습하기", height=32, 
+
+        self.learn_btn = ctk.CTkButton(info_frame, text="UI 학습하기", height=32,
                                         fg_color="gray25", hover_color=ACCENT,
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
-        
+
         ver = ctk.CTkLabel(info_frame, text="v1.0.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
         self.main_view = ctk.CTkFrame(self, corner_radius=0, fg_color=BG_MAIN)
         self.main_view.grid(row=0, column=1, sticky="nsew")
-        
+
         # 각 페이지용 프레임 초기화
         self.pages = {}
         self._build_generator_page()
@@ -219,18 +218,15 @@ class App(ctk.CTk):
         page = ctk.CTkFrame(self.main_view, fg_color="transparent")
         self.pages["generator"] = page
 
-        bg_set = BG_THEMES.get(self._config.bg_style, BG_THEMES["Zinc"])
-        card_bg = bg_set["card"]
-
         # 상단 입력 카드
-        input_card = ctk.CTkFrame(page, fg_color=card_bg, corner_radius=15)
+        input_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=15)
         input_card.pack(fill="x", padx=20, pady=(20, 10))
 
         ctk.CTkLabel(input_card, text="새 작업 추가", font=("", 14, "bold"), text_color="gray70").pack(anchor="w", padx=20, pady=(15, 5))
 
         kw_row = ctk.CTkFrame(input_card, fg_color="transparent")
         kw_row.pack(fill="x", padx=20, pady=(0, 10))
-        
+
         self._kw_entry = ctk.CTkEntry(kw_row, height=45, placeholder_text="키워드를 입력하세요 (예: 새벽 감성 lofi)", border_width=0, fg_color="gray14")
         self._kw_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self._kw_entry.bind("<Return>", lambda _: self._add_keyword())
@@ -259,6 +255,36 @@ class App(ctk.CTk):
         self._scroll = ctk.CTkScrollableFrame(page, fg_color="transparent")
         self._scroll.pack(fill="both", expand=True, padx=20, pady=5)
 
+        # ── 프로그래스 바 ──
+        prog_frame = ctk.CTkFrame(page, fg_color="transparent", height=40)
+        prog_frame.pack(fill="x", padx=20, pady=(0, 4))
+        prog_frame.pack_propagate(False)
+
+        self._progress_bar = ctk.CTkProgressBar(prog_frame, height=8, progress_color=ACCENT)
+        self._progress_bar.pack(fill="x", pady=(4, 0))
+        self._progress_bar.set(0)
+
+        self._progress_label = ctk.CTkLabel(prog_frame, text="", font=("", 11), text_color="gray50")
+        self._progress_label.pack(fill="x", pady=(2, 0))
+
+        # ── 하단 실행/중단 버튼 ──
+        btn_bar = ctk.CTkFrame(page, fg_color="transparent", height=56)
+        btn_bar.pack(fill="x", padx=20, pady=(0, 15))
+        btn_bar.pack_propagate(False)
+
+        inner = ctk.CTkFrame(btn_bar, fg_color="transparent")
+        inner.pack(expand=True)
+
+        self._btn_run = ctk.CTkButton(inner, text="▶ 실행", width=120, height=40,
+                                       font=("", 14, "bold"), fg_color=ACCENT,
+                                       hover_color="#7C3AED", command=self._on_run)
+        self._btn_run.pack(side="left", padx=6)
+
+        self._btn_stop = ctk.CTkButton(inner, text="⏹ 중단", width=90, height=40,
+                                        fg_color="#e74c3c", hover_color="#c0392b",
+                                        command=self._on_stop, state="disabled")
+        self._btn_stop.pack(side="left", padx=6)
+
     # ──────────────────────────────────────────────────────────
     # [페이지 2] 설정 (Settings)
     # ──────────────────────────────────────────────────────────
@@ -269,7 +295,7 @@ class App(ctk.CTk):
         ctk.CTkLabel(page, text="애플리케이션 설정", font=("", 20, "bold")).pack(anchor="w", padx=30, pady=(30, 20))
 
         self._vars = {}
-        
+
         # 섹션 도우미
         def add_section(title):
             ctk.CTkLabel(page, text=title, font=("", 14, "bold"), text_color=ACCENT).pack(anchor="w", padx=30, pady=(20, 10))
@@ -278,18 +304,18 @@ class App(ctk.CTk):
         # ── API 설정 ──
         sec_api = add_section("🔑 API 키 설정")
         sec_api.pack(fill="x", padx=25)
-        
+
         self._add_setting_row(sec_api, "Anthropic API Key", "anthropic_api_key", placeholder="sk-ant-...")
         self._add_setting_row(sec_api, "Pixabay API Key", "pixabay_api_key", placeholder="이미지 자동 검색용 (선택)")
 
         # ── 곡 생성 설정 ──
         sec_song = add_section("🎵 생성 옵션")
         sec_song.pack(fill="x", padx=25)
-        
+
         song_count_row = ctk.CTkFrame(sec_song, fg_color="transparent")
         song_count_row.pack(fill="x", padx=20, pady=10)
         ctk.CTkLabel(song_count_row, text="곡 수 (KR / EN / Inst)").pack(side="left")
-        
+
         for key in ["korean_songs", "english_songs", "instrumental_songs"]:
             v = ctk.IntVar(value=getattr(self._config, key))
             self._vars[key] = v
@@ -301,7 +327,7 @@ class App(ctk.CTk):
         # ── YouTube ──
         sec_yt = add_section("📺 YouTube 설정")
         sec_yt.pack(fill="x", padx=25)
-        
+
         yt_row = ctk.CTkFrame(sec_yt, fg_color="transparent")
         yt_row.pack(fill="x", padx=20, pady=10)
         ctk.CTkLabel(yt_row, text="Client Secrets").pack(side="left")
@@ -312,13 +338,13 @@ class App(ctk.CTk):
 
         self._add_setting_row(sec_yt, "Playlist ID", "youtube_playlist_id")
         self._add_setting_segmented(sec_yt, "공개 상태", "youtube_privacy", ["public", "unlisted", "private"])
-        
+
         ctk.CTkButton(sec_yt, text="Google 계정 인증하기", fg_color="#e74c3c", hover_color="#c0392b", command=self._google_auth).pack(fill="x", padx=20, pady=10)
 
         # ── 경로 ──
         sec_path = add_section("📂 저장 경로")
         sec_path.pack(fill="x", padx=25)
-        
+
         path_row = ctk.CTkFrame(sec_path, fg_color="transparent")
         path_row.pack(fill="x", padx=20, pady=10)
         v_out = ctk.StringVar(value=self._config.output_dir)
@@ -353,7 +379,7 @@ class App(ctk.CTk):
         self.pages["logs"] = page
 
         ctk.CTkLabel(page, text="시스템 로그", font=("", 20, "bold")).pack(anchor="w", padx=30, pady=(30, 10))
-        
+
         log_frame = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
         log_frame.pack(fill="both", expand=True, padx=25, pady=(0, 20))
 
@@ -362,7 +388,7 @@ class App(ctk.CTk):
 
         btn_row = ctk.CTkFrame(page, fg_color="transparent")
         btn_row.pack(fill="x", padx=25, pady=(0, 20))
-        
+
         ctk.CTkButton(btn_row, text="로그 새로고침", width=120, fg_color="gray25", command=self._refresh_logs).pack(side="left", padx=5)
         ctk.CTkButton(btn_row, text="로그 복사하기", width=120, fg_color=ACCENT, command=self._copy_logs).pack(side="left", padx=5)
 
@@ -405,8 +431,9 @@ class App(ctk.CTk):
             card = QueueCard(self._scroll, item, on_select=self._select_card, on_delete=self._delete_item)
             card.pack(fill="x", pady=4, padx=5)
             self._cards.append(card)
-        
+
         if not self._running:
+            self._progress_bar.set(0)
             pending = len(self._queue.get_pending())
             self._progress_label.configure(text=f"{pending}개 작업 대기 중" if pending else "새로운 키워드를 추가하세요")
 
@@ -428,7 +455,7 @@ class App(ctk.CTk):
         self._refresh_queue()
 
     def _pick_files(self):
-        paths = filedialog.askopenfilenames(filetypes=[("Images", "*.png *.jpg *.jpeg *.webp")])
+        paths = filedialog.askopenfilenames(filetypes=[("이미지", "*.png *.jpg *.jpeg *.webp *.gif *.bmp")])
         for p in paths:
             self._queue.add(keyword=Path(p).stem, image_path=p)
         if paths: self._refresh_queue()
@@ -439,7 +466,7 @@ class App(ctk.CTk):
         added = 0
         for f in files:
             f = f.strip("{}")
-            if Path(f).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            if Path(f).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"):
                 self._queue.add(keyword=Path(f).stem, image_path=f)
                 added += 1
         if added: self._refresh_queue()
@@ -449,7 +476,6 @@ class App(ctk.CTk):
             for k, v in self._vars.items():
                 setattr(self._config, k, v.get())
             self._config.save()
-            self._update_theme_ui()  # 저장 후 즉시 테마 색상 반영
             messagebox.showinfo("성공", "설정이 저장되었습니다.")
             self._show_page("generator")
             self._refresh_queue()
@@ -474,8 +500,10 @@ class App(ctk.CTk):
 
     def _on_learn(self):
         if not self._config.anthropic_api_key:
+            messagebox.showwarning("설정 필요", "API 키를 먼저 입력하세요.")
             return self._show_page("settings")
-        if self._running: return
+        if self._running:
+            return messagebox.showinfo("안내", "실행 중에는 학습할 수 없습니다.")
         self._running = True
         self._btn_run.configure(state="disabled")
         self._progress_label.configure(text="시스템 학습 중 (마우스를 움직이지 마세요)...")
@@ -485,14 +513,36 @@ class App(ctk.CTk):
                 start_learn()
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("학습 오류", str(e)))
-            self.after(0, self._on_done)
+            def _learn_done():
+                self._running = False
+                self._btn_run.configure(state="normal")
+                self._progress_label.configure(text="학습 완료!")
+            self.after(0, _learn_done)
+            self.after(0, self._refresh_queue)
         threading.Thread(target=_run, daemon=True).start()
 
     def _on_run(self):
         if not self._config.anthropic_api_key:
+            messagebox.showwarning("설정 필요", "API 키를 먼저 입력하세요.")
             return self._show_page("settings")
         if not ACTIONS_FILE.exists():
             return messagebox.showwarning("학습 필요", "UI 학습을 먼저 진행해주세요.")
+
+        # 접근성 권한 체크
+        from suno_bot import check_accessibility
+        if not check_accessibility():
+            messagebox.showerror("접근성 권한 없음",
+                "마우스를 제어할 수 없습니다!\n\n"
+                "시스템 설정 → 개인정보 보호 및 보안 → 접근성\n"
+                "→ '수노자동화' 앱을 추가하고 켜주세요.\n\n"
+                "이미 있으면 삭제 후 다시 추가하세요.\n"
+                "추가 후 앱을 재시작하세요.")
+            subprocess.Popen(["open",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+            return
+
+        if self._running:
+            return messagebox.showinfo("안내", "이미 실행 중입니다.")
 
         item = None
         if self._selected_card and self._selected_card.item["status"] in (STATUS_PENDING, STATUS_FAILED):
@@ -501,6 +551,15 @@ class App(ctk.CTk):
             pending = self._queue.get_pending()
             if not pending: return messagebox.showinfo("안내", "대기 중인 작업이 없습니다.")
             item = pending[0]
+
+        total = self._config.korean_songs + self._config.english_songs + self._config.instrumental_songs
+        if total == 0:
+            return messagebox.showwarning("설정 필요", "곡 수를 1 이상으로 설정하세요.")
+        scope = {"songs": "곡 생성만", "videos": "곡+영상", "upload": "곡+영상+YouTube"}.get(self._config.pipeline_scope, "곡 생성만")
+        if not messagebox.askokcancel("실행",
+            f"키워드: {item['keyword']}\n총 {total}곡 | 범위: {scope}\n\n"
+            f"Chrome에서 suno.com 로그인 필요.\n실행?"):
+            return
 
         self._start_pipeline(item)
 
@@ -518,13 +577,17 @@ class App(ctk.CTk):
             self.after(0, lambda: self._progress_label.configure(text=f"[{int(pct*100)}%] {step}"))
 
         def _run():
+            from suno_bot import clear_log
+            clear_log()
             try:
                 from pipeline import Pipeline
                 Pipeline(self._config).run(item, progress_callback=_progress, stop_event=self._stop_flag)
                 self._queue.update_status(item["id"], STATUS_DONE)
+                self.after(0, self._on_done)
             except Exception as e:
+                tb = traceback.format_exc()
                 self._queue.update_status(item["id"], STATUS_FAILED, error=str(e))
-            self.after(0, self._on_done)
+                self.after(0, lambda: self._on_error(str(e), tb))
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -532,51 +595,32 @@ class App(ctk.CTk):
         self._stop_flag.set()
         self._btn_stop.configure(state="disabled")
         self._progress_label.configure(text="중지 요청 중...")
+        self.after(2000, self._show_stop_done)
+
+    def _show_stop_done(self):
+        self._running = False
+        self._btn_run.configure(state="normal")
+        self._progress_label.configure(text="중단됨 — [실행 로그]에서 확인")
+        self._refresh_queue()
 
     def _on_done(self):
         self._running = False
         self._btn_run.configure(state="normal")
         self._btn_stop.configure(state="disabled")
-        self._progress_bar.set(0)
+        self._progress_bar.set(1.0)
+        self._progress_label.configure(text="100% — 완료!")
         self._refresh_queue()
         self._refresh_logs()
 
-    def _show_onboarding(self):
-        messagebox.showinfo("Suno Dash", "환영합니다! 먼저 [설정 관리]에서 API 키를 입력해주세요.")
-        self._show_page("settings")
-
-    def _check_accessibility_silent(self):
-        try:
-            from suno_bot import check_accessibility
-            if not check_accessibility():
-                messagebox.showwarning("접근성 권한 필요", "마우스 제어를 위해 시스템 설정에서 접근성 권한을 허용해주세요.")
-        except Exception: pass
-
-if __name__ == "__main__":
-    App().mainloop()
-   def _run():
-            try:
-                from pipeline import Pipeline
-                Pipeline(self._config).run(item, progress_callback=_progress, stop_event=self._stop_flag)
-                self._queue.update_status(item["id"], STATUS_DONE)
-            except Exception as e:
-                self._queue.update_status(item["id"], STATUS_FAILED, error=str(e))
-            self.after(0, self._on_done)
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    def _on_stop(self):
-        self._stop_flag.set()
-        self._btn_stop.configure(state="disabled")
-        self._progress_label.configure(text="중지 요청 중...")
-
-    def _on_done(self):
+    def _on_error(self, msg, tb):
         self._running = False
         self._btn_run.configure(state="normal")
         self._btn_stop.configure(state="disabled")
         self._progress_bar.set(0)
+        self._progress_label.configure(text="오류 발생 — [실행 로그]에서 확인")
         self._refresh_queue()
         self._refresh_logs()
+        messagebox.showerror("오류", f"{msg}\n\n{tb[-500:]}")
 
     def _show_onboarding(self):
         messagebox.showinfo("Suno Dash", "환영합니다! 먼저 [설정 관리]에서 API 키를 입력해주세요.")
@@ -586,64 +630,13 @@ if __name__ == "__main__":
         try:
             from suno_bot import check_accessibility
             if not check_accessibility():
-                messagebox.showwarning("접근성 권한 필요", "마우스 제어를 위해 시스템 설정에서 접근성 권한을 허용해주세요.")
-        except Exception: pass
+                messagebox.showwarning("접근성 권한 필요",
+                    "시스템 설정 → 개인정보 보호 → 접근성\n→ 수노자동화 추가 후 켜주세요")
+                subprocess.Popen(["open",
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"])
+        except Exception:
+            pass
 
-if __name__ == "__main__":
-    App().mainloop()
-lag)
-                self._queue.update_status(item["id"], STATUS_DONE)
-            except Exception as e:
-                self._queue.update_status(item["id"], STATUS_FAILED, error=str(e))
-            self.after(0, self._on_done)
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    def _on_stop(self):
-        self._stop_flag.set()
-        self._btn_stop.configure(state="disabled")
-        self._progress_label.configure(text="중지 요청 중...")
-
-    def _on_done(self):
-        self._running = False
-        self._btn_run.configure(state="normal")
-        self._btn_stop.configure(state="disabled")
-        self._progress_bar.set(0)
-        self._refresh_queue()
-        self._refresh_logs()
-
-    def _show_onboarding(self):
-        messagebox.showinfo("Suno Dash", "환영합니다! 먼저 [설정 관리]에서 API 키를 입력해주세요.")
-        self._show_page("settings")
-
-    def _check_accessibility_silent(self):
-        try:
-            from suno_bot import check_accessibility
-            if not check_accessibility():
-                messagebox.showwarning("접근성 권한 필요", "마우스 제어를 위해 시스템 설정에서 접근성 권한을 허용해주세요.")
-        except Exception: pass
-
-if __name__ == "__main__":
-    App().mainloop()
-mainloop()
- self._refresh_queue()
-        self._refresh_logs()
-
-    def _show_onboarding(self):
-        messagebox.showinfo("Suno Dash", "환영합니다! 먼저 [설정 관리]에서 API 키를 입력해주세요.")
-        self._show_page("settings")
-
-    def _check_accessibility_silent(self):
-        try:
-            from suno_bot import check_accessibility
-            if not check_accessibility():
-                messagebox.showwarning("접근성 권한 필요", "마우스 제어를 위해 시스템 설정에서 접근성 권한을 허용해주세요.")
-        except Exception: pass
-
-if __name__ == "__main__":
-    App().mainloop()
-�요.")
-        except Exception: pass
 
 if __name__ == "__main__":
     App().mainloop()
