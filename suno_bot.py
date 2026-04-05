@@ -1,7 +1,9 @@
 """
 suno_bot.py — Suno.com 자동 조작
 
-클릭: CoreGraphics 네이티브 → 실패 시 pyautogui fallback
+마우스: pyautogui
+키보드: osascript (key code)
+클립보드: osascript (set the clipboard + key code 9)
 """
 
 from __future__ import annotations
@@ -15,20 +17,14 @@ from pathlib import Path
 
 import pyautogui
 
-# CoreGraphics 시도 — 번들/권한 문제면 pyautogui fallback
+# CoreGraphics 시도
 _USE_CG = False
 try:
     from Quartz import (
-        CGEventCreateMouseEvent,
-        CGEventPost,
-        CGPointMake,
-        kCGEventLeftMouseDown,
-        kCGEventLeftMouseUp,
-        kCGEventMouseMoved,
-        kCGMouseButtonLeft,
-        kCGHIDEventTap,
+        CGEventCreateMouseEvent, CGEventPost, CGPointMake,
+        kCGEventLeftMouseDown, kCGEventLeftMouseUp, kCGEventMouseMoved,
+        kCGMouseButtonLeft, kCGHIDEventTap,
     )
-    # 실제 이벤트 생성 테스트
     _test = CGEventCreateMouseEvent(None, kCGEventMouseMoved, CGPointMake(0, 0), kCGMouseButtonLeft)
     if _test is not None:
         _USE_CG = True
@@ -36,7 +32,7 @@ except Exception:
     pass
 
 pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.05  # pyautogui 기본 딜레이 줄이기
+pyautogui.PAUSE = 0.05
 
 ACTIONS_FILE = Path.home() / ".suno_actions.json"
 SUNO_URL = "https://suno.com/create"
@@ -44,15 +40,30 @@ SUNO_DL_DIR = Path.home() / "SunoOutput" / "downloads"
 
 stop_flag: threading.Event | None = None
 
+# ── 로그 ──
+_log_lines: list[str] = []
+
+
+def _log(msg: str):
+    ts = time.strftime("%H:%M:%S")
+    _log_lines.append(f"[{ts}] {msg}")
+
+
+def get_log() -> str:
+    return "\n".join(_log_lines)
+
+
+def clear_log():
+    _log_lines.clear()
+
 
 def _check_stop():
     if stop_flag and stop_flag.is_set():
+        _log("사용자 중단")
         raise RuntimeError("사용자에 의해 중단됨")
 
 
-# ------------------------------------------------------------------ #
-# 클릭/호버                                                            #
-# ------------------------------------------------------------------ #
+# ── 기본 조작 ──
 
 def load_actions() -> dict:
     if not ACTIONS_FILE.exists():
@@ -62,7 +73,6 @@ def load_actions() -> dict:
 
 
 def _click(x: int, y: int, delay: float = 0.3) -> None:
-    """pyautogui로 이동 + 클릭. 듀얼 모니터/Retina에서 가장 안정적."""
     _check_stop()
     pyautogui.moveTo(x, y, duration=0.1)
     time.sleep(0.1)
@@ -71,14 +81,12 @@ def _click(x: int, y: int, delay: float = 0.3) -> None:
 
 
 def _hover(x: int, y: int, delay: float = 0.4) -> None:
-    """호버 (클릭 안 함)."""
     _check_stop()
     pyautogui.moveTo(x, y, duration=0.1)
     time.sleep(delay)
 
 
 def _key_code(code: int, using: str = "") -> None:
-    """osascript로 키코드 입력."""
     if using:
         cmd = f'tell application "System Events" to key code {code} using {using}'
     else:
@@ -88,7 +96,6 @@ def _key_code(code: int, using: str = "") -> None:
 
 
 def _type_text(text: str) -> None:
-    """클립보드 + key code 9 (Cmd+V)로 붙여넣기. 한국어 OK."""
     safe = text.replace("\\", "\\\\").replace('"', '\\"')
     script = f'''set the clipboard to "{safe}"
 delay 0.3
@@ -100,13 +107,12 @@ end tell'''
 
 
 def _clear_and_type(x: int, y: int, text: str) -> None:
-    """입력칸 클릭 → 전체선택 → 삭제 → 붙여넣기."""
     _click(x, y, delay=0.3)
     _click(x, y, delay=0.2)
     time.sleep(0.1)
-    _key_code(0, using="command down")   # Cmd+A (key code 0 = A)
+    _key_code(0, using="command down")  # Cmd+A
     time.sleep(0.15)
-    _key_code(51)                         # Delete
+    _key_code(51)  # Delete
     time.sleep(0.15)
     _type_text(text)
 
@@ -120,8 +126,20 @@ def _snapshot_mp3s(d: Path) -> set[Path]:
     return set(d.glob("*.mp3"))
 
 
-def _wait_for_downloads(d: Path, before: set[Path], expected: int = 2, timeout: int = 30) -> list[Path]:
-    """다운로드 완료 폴링."""
+def _close_popup(actions: dict) -> None:
+    """오른쪽 팝업 패널 닫기."""
+    if "popup_close_btn" in actions:
+        _click(*_coord(actions, "popup_close_btn"), delay=0.3)
+        time.sleep(0.3)
+
+
+def _download_one(actions: dict, dot_key: str, dl_key: str, mp3_key: str) -> None:
+    _click(*_coord(actions, dot_key), delay=0.4)
+    _hover(*_coord(actions, dl_key), delay=0.4)
+    _click(*_coord(actions, mp3_key), delay=1.5)
+
+
+def _wait_for_new_files(d: Path, before: set[Path], expected: int, timeout: int = 20) -> list[Path]:
     deadline = time.time() + timeout
     while time.time() < deadline:
         _check_stop()
@@ -131,18 +149,8 @@ def _wait_for_downloads(d: Path, before: set[Path], expected: int = 2, timeout: 
         if len(new) >= expected and not downloading:
             return new
         time.sleep(1)
-    return sorted(_snapshot_mp3s(d) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
-
-
-def _download_one(actions: dict, dot_key: str, dl_key: str, mp3_key: str) -> None:
-    _click(*_coord(actions, dot_key), delay=0.4)
-    _hover(*_coord(actions, dl_key), delay=0.4)
-    _click(*_coord(actions, mp3_key), delay=1.5)
-
-
-def _download_both(actions: dict) -> None:
-    _download_one(actions, "song_dot_btn", "download_item", "mp3_btn")
-    _download_one(actions, "song_dot_btn_2", "download_item_2", "mp3_btn_2")
+    after = _snapshot_mp3s(d)
+    return sorted(after - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
 
 def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
@@ -164,53 +172,84 @@ def _pick_mp3s(files: list[Path], pick: str) -> list[Path]:
     return [kept]
 
 
-def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 300) -> list[Path]:
+def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 360) -> list[Path]:
     """
-    곡 생성 대기 + 다운로드를 합쳐서 처리.
-    60초 기본 대기 후, 다운로드 시도 → 실패하면 30초 더 기다리고 재시도.
-    최대 max_wait초까지 반복.
+    곡 생성 대기 + 다운로드.
+    150초 기본 대기 → 다운로드 시도 → 실패 시 재시도 (이미 받은 건 안 받음)
     """
     before = _snapshot_mp3s(dl_dir)
+    _log("곡 생성 대기 시작 (150초)")
 
-    # 최소 120초 대기 (Suno 생성 시간)
-    for _ in range(24):  # 120초 = 5초 × 24
+    # 150초 기본 대기
+    for i in range(30):  # 150초 = 5초 × 30
         _check_stop()
         time.sleep(5)
 
-    # 이후 30초 간격으로 다운로드 시도 (최대 4번 = 추가 120초)
-    total_waited = 120
-    for attempt in range(4):
+    got_first = False
+    got_second = False
+    total_waited = 150
+
+    for attempt in range(5):
         _check_stop()
 
-        # 혹시 팝업이 열려있으면 닫기
-        if "popup_close_btn" in actions:
-            _click(*_coord(actions, "popup_close_btn"), delay=0.3)
-            time.sleep(0.5)
-
-        # 다운로드 시도
-        _download_both(actions)
-        new = _wait_for_downloads(dl_dir, before, expected=2, timeout=20)
-
-        if new:
+        # 이미 다 받았으면 끝
+        new = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
+        if len(new) >= 2:
+            _log(f"2곡 다운로드 완료 (시도 {attempt})")
             return new
 
-        # 못 받았으면 더 기다리기
+        # 팝업 닫기
+        _close_popup(actions)
+        time.sleep(0.3)
+
+        # 아직 안 받은 곡만 다운로드
+        if not got_first:
+            _log(f"첫째 곡 다운로드 시도 #{attempt+1}")
+            _download_one(actions, "song_dot_btn", "download_item", "mp3_btn")
+            time.sleep(2)
+
+            # 첫째 곡 다운 확인
+            check = _snapshot_mp3s(dl_dir) - before
+            if len(check) >= 1:
+                got_first = True
+                _log("첫째 곡 다운로드 성공")
+
+        if not got_second:
+            _log(f"둘째 곡 다운로드 시도 #{attempt+1}")
+            _download_one(actions, "song_dot_btn_2", "download_item_2", "mp3_btn_2")
+            time.sleep(2)
+
+            check = _snapshot_mp3s(dl_dir) - before
+            if len(check) >= 2:
+                got_second = True
+                _log("둘째 곡 다운로드 성공")
+
+        # 결과 확인
+        new = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
+        if len(new) >= 2 or (got_first and got_second):
+            _log(f"다운로드 완료: {len(new)}곡")
+            return new
+
+        # 못 받았으면 대기 후 재시도
         total_waited += 30
         if total_waited >= max_wait:
+            _log(f"타임아웃 ({total_waited}초)")
             break
-        for _ in range(6):  # 30초 = 5초 × 6
+        _log(f"다운로드 미완료 ({len(new)}곡), 30초 후 재시도...")
+        for _ in range(6):
             _check_stop()
             time.sleep(5)
 
-    # 마지막으로 한번 더 확인
-    return sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
+    # 최종 결과
+    final = sorted(_snapshot_mp3s(dl_dir) - before, key=lambda p: p.stat().st_mtime if p.exists() else 0)
+    _log(f"최종 다운로드: {len(final)}곡")
+    return final
 
 
-# ------------------------------------------------------------------ #
-# 브라우저                                                              #
-# ------------------------------------------------------------------ #
+# ── 브라우저 ──
 
 def setup_browser() -> None:
+    _log("Chrome 설정 + suno.com 열기")
     SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
     prefs_file = Path.home() / "Library/Application Support/Google/Chrome/Default/Preferences"
     if prefs_file.exists():
@@ -233,31 +272,19 @@ def focus_chrome() -> None:
 
 
 def check_accessibility() -> bool:
-    """실제로 마우스를 1px 움직여서 접근성 권한이 있는지 확인."""
     try:
         before = pyautogui.position()
         tx, ty = before[0] + 1, before[1] + 1
-        if _USE_CG:
-            CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
-                None, kCGEventMouseMoved, CGPointMake(float(tx), float(ty)), kCGMouseButtonLeft))
-        else:
-            pyautogui.moveTo(tx, ty)
+        pyautogui.moveTo(tx, ty)
         time.sleep(0.15)
         after = pyautogui.position()
-        # 원래 위치로 복귀
-        if _USE_CG:
-            CGEventPost(kCGHIDEventTap, CGEventCreateMouseEvent(
-                None, kCGEventMouseMoved, CGPointMake(float(before[0]), float(before[1])), kCGMouseButtonLeft))
-        else:
-            pyautogui.moveTo(before[0], before[1])
+        pyautogui.moveTo(before[0], before[1])
         return after != before
     except Exception:
         return False
 
 
-# ------------------------------------------------------------------ #
-# 공개 함수                                                            #
-# ------------------------------------------------------------------ #
+# ── 공개 함수 ──
 
 def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "longer") -> list[Path]:
     actions = load_actions()
@@ -273,15 +300,22 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
 
+    _log(f"보컬 세션 시작: {title}")
     _click(*_coord(actions, "advanced_tab"), delay=0.3)
+    _log("Advanced 탭 클릭")
     _clear_and_type(*_coord(actions, "lyrics_input"), lyrics)
+    _log("가사 입력 완료")
     _clear_and_type(*_coord(actions, "style_input"), style)
+    _log(f"스타일 입력: {style[:50]}")
     _clear_and_type(*_coord(actions, "title_input"), title)
+    _log(f"제목 입력: {title}")
     _click(*_coord(actions, "create_btn"), delay=0.5)
+    _log("Create 클릭")
 
-    # 곡 생성 대기 + 다운로드 (재시도 포함)
     new = _wait_and_download(actions, dl)
-    return _pick_mp3s(new[:2], vocal_pick)
+    result = _pick_mp3s(new[:2], vocal_pick)
+    _log(f"세션 완료: {len(result)}곡 (pick={vocal_pick})")
+    return result
 
 
 def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Path]:
@@ -297,16 +331,19 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     dl.mkdir(parents=True, exist_ok=True)
     focus_chrome()
 
-    # Advanced → Simple 전환 (토글 상태 초기화 보장)
+    _log(f"Instrumental 세션 시작: {description[:50] if description else '(설명 없음)'}")
     _click(*_coord(actions, "advanced_tab") if "advanced_tab" in actions
            else _coord(actions, "simple_tab"), delay=0.2)
     _click(*_coord(actions, "simple_tab"), delay=0.3)
-    # 이제 Instrumental 토글은 항상 OFF 상태 → ON으로 전환
     _click(*_coord(actions, "instrumental_toggle"), delay=0.3)
+    _log("Simple → Instrumental 토글")
     if description and "song_desc_input" in actions:
         _clear_and_type(*_coord(actions, "song_desc_input"), description)
+        _log("Song Description 입력")
     _click(*_coord(actions, "simple_create_btn"), delay=0.5)
+    _log("Create 클릭")
 
-    # 곡 생성 대기 + 다운로드 (재시도 포함)
     new = _wait_and_download(actions, dl)
-    return _pick_mp3s(new[:2], pick)
+    result = _pick_mp3s(new[:2], pick)
+    _log(f"Instrumental 완료: {len(result)}곡")
+    return result

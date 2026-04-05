@@ -403,6 +403,10 @@ class App(ctk.CTk):
                        fg_color="gray25", hover_color="gray35",
                        command=self._on_delete).pack(side="left", padx=4)
 
+        ctk.CTkButton(inner, text="로그", width=60, height=36,
+                       fg_color="gray25", hover_color="gray35",
+                       command=self._on_show_log).pack(side="left", padx=4)
+
     # ── DnD ───────────────────────────────────────────────────
     def _setup_dnd(self):
         try:
@@ -602,6 +606,8 @@ class App(ctk.CTk):
                 text=f"{int(pct * 100)}% — {step}"))
 
         def _run():
+            from suno_bot import clear_log, get_log
+            clear_log()
             try:
                 from pipeline import Pipeline
                 Pipeline(self._config).run(item, progress_callback=_progress, stop_event=self._stop_flag)
@@ -618,6 +624,14 @@ class App(ctk.CTk):
         self._stop_flag.set()
         self._btn_stop.configure(state="disabled")
         self._progress_label.configure(text="중단 중...")
+        # 로그 보기 버튼 표시
+        self.after(2000, self._show_log_button)
+
+    def _show_log_button(self):
+        self._running = False
+        self._btn_run.configure(state="normal")
+        self._progress_label.configure(text="중단됨 — 아래 '로그' 버튼으로 확인")
+        self._refresh()
 
     def _on_done(self):
         self._running = False
@@ -632,9 +646,36 @@ class App(ctk.CTk):
         self._btn_run.configure(state="normal")
         self._btn_stop.configure(state="disabled")
         self._progress_bar.set(0)
-        self._progress_label.configure(text="오류 발생")
+        self._progress_label.configure(text="오류 발생 — '로그' 버튼으로 확인")
         self._refresh()
         messagebox.showerror("오류", f"{msg}\n\n{tb[-500:]}")
+
+    def _on_show_log(self):
+        """실행 로그를 보여주고 복사할 수 있게 한다."""
+        from suno_bot import get_log
+        log_text = get_log() or "로그가 없습니다."
+
+        win = ctk.CTkToplevel(self)
+        win.title("실행 로그")
+        win.geometry("600x400")
+        win.grab_set()
+
+        txt = ctk.CTkTextbox(win, font=("Menlo", 12))
+        txt.pack(fill="both", expand=True, padx=10, pady=(10, 5))
+        txt.insert("1.0", log_text)
+        txt.configure(state="disabled")
+
+        def _copy():
+            self.clipboard_clear()
+            self.clipboard_append(log_text)
+            messagebox.showinfo("복사됨", "로그가 클립보드에 복사되었습니다.", parent=win)
+
+        btn_row = ctk.CTkFrame(win, fg_color="transparent")
+        btn_row.pack(fill="x", padx=10, pady=(0, 10))
+        ctk.CTkButton(btn_row, text="로그 복사", height=36, fg_color=ACCENT,
+                       command=_copy).pack(side="left", padx=4)
+        ctk.CTkButton(btn_row, text="닫기", height=36, fg_color="gray30",
+                       command=win.destroy).pack(side="right", padx=4)
 
 
 if __name__ == "__main__":

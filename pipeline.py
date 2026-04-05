@@ -16,7 +16,7 @@ from config import Config
 from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image
 from media_proc import make_video
 import suno_bot
-from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser
+from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser, _log
 from yt_upload import YouTubeUploader
 
 ProgressCallback = Callable[[str, int, int], None]
