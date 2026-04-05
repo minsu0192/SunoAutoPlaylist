@@ -26,6 +26,8 @@ class Config:
     youtube_playlist_id: str = ""
     youtube_privacy: str = "public"
     output_dir: str = str(Path.home() / "SunoOutput")
+    accent_color: str = "#8B5CF6"  # 기본 보라색
+    bg_style: str = "Zinc"  # Zinc, Ocean, OLED
 
     # ------------------------------------------------------------------ #
     # 클래스 메서드                                                         #
