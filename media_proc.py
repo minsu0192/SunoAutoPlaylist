@@ -58,11 +58,15 @@ def make_thumbnail(
 
     draw = ImageDraw.Draw(img)
 
-    # 채널명 폰트 (essential; 스타일 — 큰 볼드, 한 줄)
+    # 채널명 폰트 (Bodoni 72 Bold, 크게)
+    _FONT_BODONI = "/System/Library/Fonts/Supplemental/Bodoni 72.ttc"
     try:
-        font_big = ImageFont.truetype(_FONT_BOLD, 120)
+        font_big = ImageFont.truetype(_FONT_BODONI, 170, index=1)
     except Exception:
-        font_big = ImageFont.truetype(_FONT_KOREAN, 120)
+        try:
+            font_big = ImageFont.truetype(_FONT_BOLD, 170)
+        except Exception:
+            font_big = ImageFont.truetype(_FONT_KOREAN, 170)
 
     # 채널명 텍스트 (줄바꿈 지원)
     lines = channel_name.split("\n")
@@ -78,14 +82,6 @@ def make_thumbnail(
         # 텍스트 그림자 (가독성)
         draw.text((x + 3, y + 3), line, fill=(0, 0, 0, 80), font=font_big)
         draw.text((x, y), line, fill="white", font=font_big)
-
-    # 점선 구분선 (essential; 스타일)
-    dotline_y = y_start + total_text_h + 10
-    dot_spacing = 8
-    dot_width = 300
-    dot_start_x = (width - dot_width) // 2
-    for x in range(dot_start_x, dot_start_x + dot_width, dot_spacing):
-        draw.rectangle([x, dotline_y, x + 3, dotline_y + 3], fill=(255, 255, 255, 200))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path, quality=95)
