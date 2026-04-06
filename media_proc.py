@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -130,23 +131,31 @@ def make_video(mp3_paths: list[Path] | Path, image_path: Path, output_path: Path
         combined_mp3 = mp3_paths[0]
     else:
         # ffmpeg concat으로 MP3 합치기
+        # 파일명에 apostrophe 등 특수문자가 있으면 concat list 구문이 깨지므로
+        # 번호 symlink로 안전한 경로를 만들어 사용한다.
         concat_list = output_path.parent / "_concat_list.txt"
-        with concat_list.open("w", encoding="utf-8") as f:
-            for mp3 in mp3_paths:
-                f.write(f"file '{mp3}'\n")
-
         combined_mp3 = output_path.parent / "_combined.mp3"
-        concat_cmd = [
-            ffmpeg, "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c", "copy", str(combined_mp3),
-        ]
-        try:
-            r = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=120)
-            if r.returncode != 0:
-                raise RuntimeError(f"MP3 합치기 실패:\n{r.stderr[-1000:]}")
-        except subprocess.TimeoutExpired as e:
-            raise RuntimeError("MP3 합치기 타임아웃") from e
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for i, mp3 in enumerate(mp3_paths):
+                link = Path(tmpdir) / f"{i:04d}.mp3"
+                link.symlink_to(mp3.resolve())
+
+            with concat_list.open("w", encoding="utf-8") as f:
+                for i in range(len(mp3_paths)):
+                    f.write(f"file '{tmpdir}/{i:04d}.mp3'\n")
+
+            concat_cmd = [
+                ffmpeg, "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy", str(combined_mp3),
+            ]
+            try:
+                r = subprocess.run(concat_cmd, capture_output=True, text=True, timeout=120)
+                if r.returncode != 0:
+                    raise RuntimeError(f"MP3 합치기 실패:\n{r.stderr[-1000:]}")
+            except subprocess.TimeoutExpired as e:
+                raise RuntimeError("MP3 합치기 타임아웃") from e
 
     # 이미지 + 합쳐진 오디오 → MP4
     cmd = [

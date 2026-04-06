@@ -7,6 +7,7 @@ lyrics_gen.py — Claude API로 가사/스타일/YouTube 정보 생성
 
 from __future__ import annotations
 
+import random
 import re
 import json
 from pathlib import Path
@@ -54,6 +55,7 @@ def generate_song_content(
     language: str,
     index: int,
     api_key: str,
+    used_titles: list[str] | None = None,
 ) -> dict:
     """
     키워드와 언어를 기반으로 가사와 스타일을 생성한다.
@@ -72,8 +74,6 @@ def generate_song_content(
         if language == "korean"
         else "Write in English. The lyrics must be in English."
     )
-
-    import random
 
     # 매번 다른 조합을 랜덤으로 배정해서 같은 결과가 나올 수 없게 함
     tone_pool = [
@@ -110,6 +110,11 @@ def generate_song_content(
         if index > 0 else ""
     )
 
+    titles_note = ""
+    if used_titles:
+        titles_list = ", ".join(f'"{t}"' for t in used_titles)
+        titles_note = f"\n⚠️ ALREADY USED TITLES (do NOT reuse or closely resemble these): {titles_list}"
+
     prompt = f"""You are the exclusive songwriter for "Seoul Diary Playlist," a YouTube channel that creates cinematic, emotionally rich music inspired by the streets, seasons, and stories of Seoul. Your songs have been streamed by hundreds of thousands of listeners who come for the atmosphere — the feeling of walking through rain-soaked alleys, watching city lights from a rooftop café, or sitting alone on a park bench as autumn leaves fall.
 
 Your job: write ONE complete song based on the keyword below. Every song you write should feel like a scene from a film — vivid, specific, and emotionally honest.
@@ -121,7 +126,7 @@ EMOTIONAL TONE: {chosen_tone}
 GENRE: {chosen_genre}
 TITLE STYLE: {chosen_title_style}
 RANDOM SEED: {random_seed}
-{variety_note}
+{variety_note}{titles_note}
 ═══════════════════════════════════════════════════
 
 Respond with ONLY this JSON (no other text):
@@ -371,8 +376,9 @@ def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | No
         if not hits:
             return None
 
-        # 첫 번째 결과의 큰 이미지 다운로드
-        img_url = hits[0].get("largeImageURL") or hits[0].get("webformatURL")
+        # 결과 중 랜덤 선택 (매번 같은 이미지 방지)
+        chosen = random.choice(hits)
+        img_url = chosen.get("largeImageURL") or chosen.get("webformatURL")
         if not img_url:
             return None
 

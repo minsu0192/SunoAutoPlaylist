@@ -191,8 +191,9 @@ def _wait_and_download(actions: dict, dl_dir: Path, before_snap: set[Path], max_
     - 실패한 곡만 재시도, 성공한 곡은 절대 다시 안 건드림
     - 이미 받은 파일 수를 기준으로 추가 다운로드 필요 여부 판단
     """
-    _log("곡 생성 대기 시작 (180초 = 3분)")
-    for _ in range(36):  # 5초 × 36 = 180초
+    initial_wait = min(240, max_wait)
+    _log(f"곡 생성 대기 시작 ({initial_wait}초 = {initial_wait // 60}분 {initial_wait % 60}초)")
+    for _ in range(initial_wait // 5):
         _check_stop()
         time.sleep(5)
 
@@ -323,8 +324,9 @@ def _wait_and_download(actions: dict, dl_dir: Path, before_snap: set[Path], max_
         _delete_duplicates()
         return _new_mp3s()
 
-    _log(f"📊 고유 {_unique_count()}곡, 실패 {len(failed)}개 → 60초 대기 후 재시도")
-    for _ in range(12):  # 60초
+    retry_wait = max(min(120, max_wait - initial_wait), 30)
+    _log(f"📊 고유 {_unique_count()}곡, 실패 {len(failed)}개 → {retry_wait}초 대기 후 재시도")
+    for _ in range(retry_wait // 5):
         _check_stop()
         time.sleep(5)
 

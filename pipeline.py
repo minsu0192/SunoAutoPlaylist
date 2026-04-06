@@ -113,12 +113,23 @@ class Pipeline:
             if inst_missing:
                 raise RuntimeError(f"Instrumental 학습 미완료: {inst_missing}")
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        # 곡 생성은 순차 실행 (이전 제목을 프롬프트에 전달하여 중복 방지)
+        used_titles: list[str] = []
+        for i in range(kr_sessions):
+            _check_stop()
+            content = generate_song_content(keyword, "korean", i, cfg.anthropic_api_key, used_titles=used_titles)
+            sessions[i] = content
+            used_titles.append(content["title"])
+
+        for i in range(en_sessions):
+            _check_stop()
+            content = generate_song_content(keyword, "english", i, cfg.anthropic_api_key, used_titles=used_titles)
+            sessions[kr_sessions + i] = content
+            used_titles.append(content["title"])
+
+        # Instrumental 설명 + YouTube 정보는 곡과 독립이므로 병렬 생성
+        with ThreadPoolExecutor(max_workers=2) as pool:
             futures = []
-            for i in range(kr_sessions):
-                futures.append(pool.submit(_gen_kr, i))
-            for i in range(en_sessions):
-                futures.append(pool.submit(_gen_en, i))
             if inst_sessions > 0:
                 futures.append(pool.submit(_gen_inst))
             if scope == "upload":
@@ -127,13 +138,7 @@ class Pipeline:
             for fut in as_completed(futures):
                 _check_stop()
                 result = fut.result()
-                if isinstance(result, tuple):
-                    kind, idx, content = result
-                    if kind == "kr":
-                        sessions[idx] = content
-                    else:
-                        sessions[kr_sessions + idx] = content
-                elif isinstance(result, str):
+                if isinstance(result, str):
                     inst_desc = result
                 elif isinstance(result, dict):
                     yt_info = result
