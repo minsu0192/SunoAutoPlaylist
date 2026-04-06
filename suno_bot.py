@@ -341,6 +341,8 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
 def setup_browser() -> None:
     _log("Chrome 설정 + suno.com 열기")
     SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Chrome 다운로드 경로 설정 (Chrome 종료 후 설정해야 적용됨)
     prefs_file = Path.home() / "Library/Application Support/Google/Chrome/Default/Preferences"
     if prefs_file.exists():
         try:
@@ -348,8 +350,15 @@ def setup_browser() -> None:
             prefs.setdefault("download", {})["default_directory"] = str(SUNO_DL_DIR)
             prefs["download"]["prompt_for_download"] = False
             prefs_file.write_text(json.dumps(prefs, ensure_ascii=False), encoding="utf-8")
-        except Exception:
-            pass
+            _log(f"Chrome 다운로드 경로: {SUNO_DL_DIR}")
+        except Exception as e:
+            _log(f"Chrome 설정 실패: {e}")
+
+    # 다운로드 폴더 확인 로그
+    _log(f"감시 폴더: {SUNO_DL_DIR}")
+    _log(f"폴더 존재: {SUNO_DL_DIR.exists()}")
+    _log(f"현재 mp3 수: {len(list(SUNO_DL_DIR.glob('*.mp3')))}")
+
     subprocess.Popen(["open", "-a", "Google Chrome", SUNO_URL],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(3)
