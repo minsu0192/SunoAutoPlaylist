@@ -90,13 +90,20 @@ def make_thumbnail(
 
 def _check_ffmpeg() -> str:
     """ffmpeg 실행 파일 경로를 반환한다. 없으면 RuntimeError."""
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path is None:
-        raise RuntimeError(
-            "ffmpeg을 찾을 수 없습니다.\n"
-            "설치 방법: brew install ffmpeg"
-        )
-    return ffmpeg_path
+    # .app 번들에서는 PATH에 /opt/homebrew/bin이 없을 수 있으므로 직접 탐색
+    candidates = [
+        shutil.which("ffmpeg"),
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ]
+    for path in candidates:
+        if path and Path(path).exists():
+            return path
+    raise RuntimeError(
+        "ffmpeg을 찾을 수 없습니다.\n"
+        "설치 방법: brew install ffmpeg"
+    )
 
 
 def make_video(mp3_paths: list[Path] | Path, image_path: Path, output_path: Path) -> Path:
@@ -151,8 +158,9 @@ def make_video(mp3_paths: list[Path] | Path, image_path: Path, output_path: Path
         "scale=1920:1080:force_original_aspect_ratio=decrease,"
         "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black",
         "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        "-tune", "stillimage",
+        "-preset", "ultrafast",
+        "-crf", "18",
         "-c:a", "aac",
         "-b:a", "192k",
         "-shortest",

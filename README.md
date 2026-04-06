@@ -1,4 +1,4 @@
-# SunoAuto DASH
+# SunoAuto DASH v1.3.2
 
 키워드 입력 하나로 AI 작곡 + 영상 제작 + YouTube 업로드까지 자동화하는 macOS 데스크탑 앱
 
@@ -30,14 +30,24 @@
 - **사이드바 UI** — 작업 생성 / 설정 관리 / 실행 로그 페이지
 - **큐 시스템** — 키워드를 여러 개 등록하고 순차 실행
 - **Claude 가사 생성** — 한국어/영어/인스트루멘탈 곡 자동 작사
-- **Tuneyet 스타일 제목** — 감성적 독백체 YouTube 제목 자동 생성
+- **스냅샷 기반 다운로드 감지** — 기존 파일을 건드리지 않고 새 파일만 정확히 추적
+- **Chrome 프로필 자동 감지** — 활성 프로필의 다운로드 경로를 자동으로 찾음
 - **Pixabay 이미지** — 키워드 기반 배경 이미지 자동 검색
+- **FFmpeg 영상 생성** — 정지 이미지 + MP3 합성, stillimage 최적화로 빠른 인코딩
 - **YouTube 자동 업로드** — 플레이리스트 추가, 공개 상태 설정
-- **YouTube 성과 분석** — 조회수/좋아요 데이터 수집 및 피드백
 
 ---
 
 ## 설치
+
+### 필수 요구사항
+
+- macOS
+- Python 3.11+
+- Google Chrome
+- FFmpeg (`brew install ffmpeg`)
+
+### 설치 방법
 
 ```bash
 git clone https://github.com/minsu0192/SunoAutoPlaylist.git
@@ -46,6 +56,9 @@ cd SunoAutoPlaylist
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+
+# FFmpeg 설치 (영상 생성에 필요)
+brew install ffmpeg
 ```
 
 ---
@@ -77,9 +90,8 @@ Chrome에서 suno.com/create 열고 Advanced 탭을 연 상태에서:
 [3] Styles 입력창
 [4] Song Title 입력창
 [5] Create 버튼
-[6] 생성된 곡의 ... 버튼
-[7] 다운로드 버튼
-[0] 종료 및 저장
+[6] 생성된 곡의 ... 버튼 (첫째/둘째 각각)
+[7] Download → MP3 버튼 (첫째/둘째 각각)
 ```
 
 ### 3. YouTube 연동 (선택)
@@ -110,6 +122,14 @@ Chrome에서 suno.com/create 열고 Advanced 탭을 연 상태에서:
 | 실행 범위 | songs/videos/upload | songs |
 | 저장 경로 | 결과물 저장 위치 | ~/SunoOutput |
 
+### 실행 범위별 동작
+
+| 범위 | 동작 |
+|------|------|
+| `songs` | 곡 생성 + 다운로드만 (결과: `~/SunoOutput/completed/`) |
+| `videos` | 곡 + 배경이미지 합성 MP4 생성 (결과: `~/SunoOutput/키워드/`) |
+| `upload` | 곡 + 영상 + YouTube 자동 업로드 |
+
 ---
 
 ## 파일 구조
@@ -119,13 +139,24 @@ Chrome에서 suno.com/create 열고 Advanced 탭을 연 상태에서:
 | `app.py` | GUI 메인 (사이드바 + 페이지 레이아웃) |
 | `config.py` | 설정 관리 (~/.suno_auto.json) |
 | `pipeline.py` | 전체 파이프라인 오케스트레이션 |
-| `suno_bot.py` | Suno.com 마우스/키보드 자동화 |
+| `suno_bot.py` | Suno.com 마우스/키보드 자동화 + 다운로드 감지 |
 | `learn.py` | UI 좌표 학습 |
 | `lyrics_gen.py` | Claude API 가사/스타일/YouTube 정보 생성 |
-| `media_proc.py` | FFmpeg MP3→MP4 변환 |
+| `media_proc.py` | FFmpeg 썸네일 + MP4 영상 생성 |
 | `queue_manager.py` | 작업 큐 관리 |
 | `yt_upload.py` | YouTube 업로드 |
 | `youtube_analytics.py` | YouTube 성과 분석 |
+
+### 출력 폴더 구조
+
+```
+~/SunoOutput/
+  completed/          — 다운로드된 MP3 (모든 세션)
+  images/             — Pixabay 배경 이미지
+  키워드이름/          — 영상 + 썸네일 (videos/upload scope)
+    thumbnail.jpg
+    키워드이름.mp4
+```
 
 ---
 
@@ -135,9 +166,12 @@ Chrome에서 suno.com/create 열고 Advanced 탭을 연 상태에서:
 |------|------|
 | 접근성 권한 오류 | 시스템 설정 → 개인정보 → 접근성 → 앱 추가 |
 | 마우스가 안 움직임 | 접근성 권한 삭제 후 재추가, 앱 재시작 |
-| 다운로드 파일 미감지 | 시스템 설정 → 개인정보 → 파일 및 폴더 → Downloads 허용 |
+| 다운로드 감지 안 됨 | Chrome 활성 프로필 확인 (로그에 표시됨) |
+| ffmpeg을 찾을 수 없음 | `brew install ffmpeg` 실행 |
+| 영상 생성 느림 | ffmpeg v8+ 권장, ultrafast + stillimage 프리셋 사용 중 |
 | API 인증 실패 | 설정에서 API 키 재입력 |
 | YouTube 인증 실패 | client_secrets.json 경로 확인 |
+| 폴더를 찾을 수 없음 | scope=songs이면 ~/SunoOutput/completed/ 에 저장됨 |
 
 ---
 
@@ -145,7 +179,35 @@ Chrome에서 suno.com/create 열고 Advanced 탭을 연 상태에서:
 
 ```bash
 source .venv/bin/activate
-chmod +x build_app.sh
-./build_app.sh
+pip install pyinstaller
+pyinstaller 수노자동화.spec --noconfirm
 # dist/수노자동화.app → Applications 폴더로 이동
 ```
+
+빌드 후:
+1. `dist/수노자동화.app`을 Applications 폴더로 복사
+2. 시스템 설정 → 개인정보 → 접근성에서 앱 추가
+3. 앱 업데이트 시마다 접근성 권한 재설정 필요
+
+---
+
+## 변경 이력
+
+### v1.3.2
+- FFmpeg 경로 자동 탐색 (`/opt/homebrew/bin` 등 .app 번들 대응)
+- 영상 인코딩 속도 개선 (`-tune stillimage -preset ultrafast`)
+
+### v1.3.1
+- 불필요한 스크롤 코드 제거 (오작동 방지)
+- completed 폴더 경로 고정 (`~/SunoOutput/completed/`)
+- 파일명 timestamp 충돌 방지
+
+### v1.3.0
+- Chrome 활성 프로필 자동 감지 (Local State 기반)
+- 스냅샷 비교 방식으로 다운로드 감지 (기존 파일 삭제 안 함)
+- `~/Downloads` 파일 보호 (폴더 전체 삭제 제거)
+
+### v1.2.x
+- 다운로드 감시 폴더 오류 수정
+- UI 좌표 학습 시스템
+- 큐 기반 작업 관리

@@ -178,9 +178,12 @@ def _escape_key() -> None:
     time.sleep(0.3)
 
 
-def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list[Path]:
+
+def _wait_and_download(actions: dict, dl_dir: Path, before_snap: set[Path], max_wait: int = 420) -> list[Path]:
     """
     곡 생성 대기 → 다운로드.
+
+    before_snap: 세션 시작 전 dl_dir의 mp3 스냅샷 (이 파일들은 무시)
 
     설계 원칙:
     - 다운로드 시도 전에 반드시 UI 상태 초기화 (Escape + 팝업 닫기)
@@ -193,25 +196,27 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
         _check_stop()
         time.sleep(5)
 
-    # ── 읽기 전용 (절대 파일 안 건드림) ──
+    # ── 이 세션에서 새로 받은 파일만 추적 ──
 
-    def _all_mp3s() -> list[Path]:
-        return sorted(dl_dir.glob("*.mp3"),
-                       key=lambda p: p.stat().st_mtime if p.exists() else 0)
+    def _new_mp3s() -> list[Path]:
+        """세션 시작 후 새로 생긴 mp3만 반환."""
+        current = set(dl_dir.glob("*.mp3"))
+        new = current - before_snap
+        return sorted(new, key=lambda p: p.stat().st_mtime if p.exists() else 0)
 
     def _unique_count() -> int:
-        return len({f.stat().st_size for f in _all_mp3s() if f.exists()})
+        return len({f.stat().st_size for f in _new_mp3s() if f.exists()})
 
     def _snap(label: str) -> None:
-        files = _all_mp3s()
+        files = _new_mp3s()
         names = [f"{f.name}({f.stat().st_size//1024}KB)" for f in files]
-        _log(f"📸 [{label}] 파일 {len(files)}개, 고유 {_unique_count()}곡: {names}")
+        _log(f"📸 [{label}] 새 파일 {len(files)}개, 고유 {_unique_count()}곡: {names}")
 
     # ── 파일 수정 ──
 
     def _delete_duplicates() -> None:
         seen: dict[int, Path] = {}
-        for f in _all_mp3s():
+        for f in _new_mp3s():
             s = f.stat().st_size
             if s in seen:
                 _log(f"🗑 중복 삭제: {f.name} (={seen[s].name})")
@@ -245,13 +250,13 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
             return "new"
 
         _reset_ui()
-        files_before = len(_all_mp3s())
+        files_before = len(_new_mp3s())
         _log(f"[{label}] ▶ 다운로드 클릭")
         _download_one(actions, dot_key, dl_key, mp3_key)
         _wait_crdownload()
         _snap(f"{label} 후")
 
-        files_after = len(_all_mp3s())
+        files_after = len(_new_mp3s())
         unique_after = _unique_count()
 
         if files_after <= files_before:
@@ -281,8 +286,8 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
     # 실패 버튼만 1회 재시도
     # ══════════════════════════════════════════════════════════
 
-    B1 = ("song_dot_btn", "download_item", "mp3_btn", "곡1")
-    B2 = ("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
+    B1 = ("song_dot_btn", "download_item", "mp3_btn")
+    B2 = ("song_dot_btn_2", "download_item_2", "mp3_btn_2")
 
     _snap("시작")
 
@@ -293,7 +298,7 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
     if _unique_count() >= 2:
         _delete_duplicates()
         _log(f"🏁 1차에서 2곡 완료")
-        return _all_mp3s()
+        return _new_mp3s()
 
     r2 = _try_one(*B2, "1차-곡2")
     _snap("1차-곡2 후")
@@ -301,14 +306,14 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
     if _unique_count() >= 2:
         _delete_duplicates()
         _log(f"🏁 1차에서 2곡 완료")
-        return _all_mp3s()
+        return _new_mp3s()
 
     # ── 부족 → 60초 대기 ──
     failed = []
     if r1 == "failed":
-        failed.append(B1)
+        failed.append((B1, "곡1"))
     if r2 == "failed":
-        failed.append(B2)
+        failed.append((B2, "곡2"))
     # "new" → 절대 재시도 안 함
     # "duplicate" → 절대 재시도 안 함 (같은 곡만 나옴)
     # "failed"만 재시도
@@ -316,7 +321,7 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
     if not failed:
         _log(f"🏁 재시도 대상 없음 (고유 {_unique_count()}곡)")
         _delete_duplicates()
-        return _all_mp3s()
+        return _new_mp3s()
 
     _log(f"📊 고유 {_unique_count()}곡, 실패 {len(failed)}개 → 60초 대기 후 재시도")
     for _ in range(12):  # 60초
@@ -324,35 +329,66 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
         time.sleep(5)
 
     # ── 2차: 실패한 버튼만 딱 1번 ──
-    for btn in failed:
+    for keys, name in failed:
         if _unique_count() >= 2:
             break
-        _try_one(*btn, f"재시도-{btn[3]}")
-        _snap(f"재시도-{btn[3]} 후")
+        _try_one(*keys, f"재시도-{name}")
+        _snap(f"재시도-{name} 후")
 
     _delete_duplicates()
     _snap("최종")
     _log(f"🏁 다운로드 완료: 고유 {_unique_count()}곡")
-    return _all_mp3s()
+    return _new_mp3s()
 
 
 # ── 브라우저 ──
 
-def setup_browser() -> None:
-    _log("Chrome 설정 + suno.com 열기")
-    SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
+def _get_chrome_download_dir() -> Path:
+    """Chrome의 실제 다운로드 경로를 읽어온다.
+    Local State에서 가장 최근 활성 프로필을 찾고, 그 프로필의 다운로드 경로를 사용한다."""
+    chrome_dir = Path.home() / "Library/Application Support/Google/Chrome"
 
-    # Chrome 다운로드 경로 설정 (Chrome 종료 후 설정해야 적용됨)
-    prefs_file = Path.home() / "Library/Application Support/Google/Chrome/Default/Preferences"
+    # Local State에서 가장 최근 활성 프로필 찾기
+    active_profile = "Default"
+    local_state = chrome_dir / "Local State"
+    if local_state.exists():
+        try:
+            ls = json.loads(local_state.read_text(encoding="utf-8"))
+            info_cache = ls.get("profile", {}).get("info_cache", {})
+            best_time = 0
+            for name, data in info_cache.items():
+                t = data.get("active_time", 0)
+                if t > best_time:
+                    best_time = t
+                    active_profile = name
+        except Exception:
+            pass
+
+    _log(f"Chrome 활성 프로필: {active_profile}")
+
+    # 활성 프로필의 다운로드 경로 읽기
+    prefs_file = chrome_dir / active_profile / "Preferences"
     if prefs_file.exists():
         try:
             prefs = json.loads(prefs_file.read_text(encoding="utf-8"))
-            prefs.setdefault("download", {})["default_directory"] = str(SUNO_DL_DIR)
-            prefs["download"]["prompt_for_download"] = False
-            prefs_file.write_text(json.dumps(prefs, ensure_ascii=False), encoding="utf-8")
-            _log(f"Chrome 다운로드 경로: {SUNO_DL_DIR}")
-        except Exception as e:
-            _log(f"Chrome 설정 실패: {e}")
+            dl_dir = prefs.get("download", {}).get("default_directory", "")
+            if dl_dir:
+                _log(f"Chrome 다운로드 경로: {dl_dir}")
+                return Path(dl_dir)
+        except Exception:
+            pass
+
+    _log("Chrome 다운로드 경로: ~/Downloads (기본값)")
+    return Path.home() / "Downloads"
+
+
+def setup_browser() -> None:
+    global SUNO_DL_DIR
+    _log("Chrome 설정 + suno.com 열기")
+
+    # Chrome의 실제 다운로드 경로를 감시 대상으로 사용
+    SUNO_DL_DIR = _get_chrome_download_dir()
+    SUNO_DL_DIR.mkdir(parents=True, exist_ok=True)
 
     # 다운로드 폴더 확인 로그
     _log(f"감시 폴더: {SUNO_DL_DIR}")
@@ -385,15 +421,11 @@ def check_accessibility() -> bool:
 
 # ── 공개 함수 ──
 
-def _clean_dl_dir(dl_dir: Path) -> None:
-    """다운로드 폴더를 비워서 이전 세션 파일이 간섭하지 않도록 한다."""
+def _snapshot_dl_dir(dl_dir: Path) -> set[Path]:
+    """다운로드 폴더의 현재 mp3 파일 목록을 스냅샷으로 저장."""
     if dl_dir.exists():
-        for f in dl_dir.iterdir():
-            try:
-                f.unlink()
-            except Exception:
-                pass
-    dl_dir.mkdir(parents=True, exist_ok=True)
+        return set(dl_dir.glob("*.mp3"))
+    return set()
 
 
 def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "longer") -> list[Path]:
@@ -407,12 +439,13 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
     dl = SUNO_DL_DIR
-    _clean_dl_dir(dl)  # 이전 세션 파일 정리
+    before_snap = _snapshot_dl_dir(dl)  # 기존 파일 스냅샷 (삭제 안 함)
+    _log(f"세션 시작 전 기존 mp3: {len(before_snap)}개")
     focus_chrome()
     time.sleep(2)
 
-    # Suno 페이지 새로고침 — 이전 세션 곡이 남아있으면 안 됨
-    _log("페이지 새로고침 (이전 세션 곡 제거)")
+    # 페이지 새로고침
+    _log("페이지 새로고침")
     _key_code(15, using="command down")  # Cmd+R
     time.sleep(7)  # 페이지 로딩 대기
 
@@ -429,7 +462,7 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     _click(*_coord(actions, "create_btn"), delay=0.5)
     _log("Create 클릭")
 
-    new = _wait_and_download(actions, dl)
+    new = _wait_and_download(actions, dl, before_snap)
 
     # ── 다운로드 결과 확인 ──
     _log(f"다운로드 결과: {len(new)}곡")
@@ -443,20 +476,22 @@ def run_suno_session(lyrics: str, style: str, title: str, vocal_pick: str = "lon
     _log(f"선택된 곡: {[f.name for f in selected]}")
 
     # ── 선택된 곡을 completed/로 이동 ──
-    safe_dir = dl.parent / "completed"
+    safe_dir = Path.home() / "SunoOutput" / "completed"
     safe_dir.mkdir(parents=True, exist_ok=True)
     result: list[Path] = []
-    for f in selected:
+    for idx, f in enumerate(selected):
         if f.exists():
-            dest = safe_dir / f"{int(time.time())}_{f.name}"
+            dest = safe_dir / f"{int(time.time())}_{idx}_{f.name}"
             f.rename(dest)
             result.append(dest)
-            _log(f"보관: {f.name} → completed/")
+            _log(f"보관: {f.name} → SunoOutput/completed/")
 
-    # ── 나머지 파일 전부 삭제 (다음 세션에 영향 안 주도록) ──
-    leftover = list(dl.glob("*.mp3"))
-    if leftover:
-        for f in leftover:
+    # ── 이 세션에서 새로 받은 나머지 파일만 삭제 (기존 파일 보호) ──
+    current = set(dl.glob("*.mp3"))
+    selected_set = {f for f in selected if f.exists()}
+    leftover = current - before_snap - selected_set
+    for f in leftover:
+        if f.exists():
             _log(f"삭제: {f.name}")
             f.unlink()
 
@@ -474,12 +509,13 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
         raise RuntimeError(f"UI 학습 항목 누락: {missing}")
 
     dl = SUNO_DL_DIR
-    _clean_dl_dir(dl)  # 이전 세션 파일 정리
+    before_snap = _snapshot_dl_dir(dl)  # 기존 파일 스냅샷 (삭제 안 함)
+    _log(f"세션 시작 전 기존 mp3: {len(before_snap)}개")
     focus_chrome()
     time.sleep(2)
 
-    # Suno 페이지 새로고침
-    _log("페이지 새로고침 (이전 세션 곡 제거)")
+    # 페이지 새로고침
+    _log("페이지 새로고침")
     _key_code(15, using="command down")  # Cmd+R
     time.sleep(7)
 
@@ -495,7 +531,7 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     _click(*_coord(actions, "simple_create_btn"), delay=0.5)
     _log("Create 클릭")
 
-    new = _wait_and_download(actions, dl)
+    new = _wait_and_download(actions, dl, before_snap)
 
     _log(f"다운로드 결과: {len(new)}곡")
     for f in new:
@@ -504,19 +540,22 @@ def run_suno_instrumental(description: str = "", pick: str = "both") -> list[Pat
     selected = _pick_mp3s(new[:2], pick)
     _log(f"선택된 곡: {[f.name for f in selected]}")
 
-    safe_dir = dl.parent / "completed"
+    safe_dir = Path.home() / "SunoOutput" / "completed"
     safe_dir.mkdir(parents=True, exist_ok=True)
     result: list[Path] = []
-    for f in selected:
+    for idx, f in enumerate(selected):
         if f.exists():
-            dest = safe_dir / f"{int(time.time())}_{f.name}"
+            dest = safe_dir / f"{int(time.time())}_{idx}_{f.name}"
             f.rename(dest)
             result.append(dest)
-            _log(f"보관: {f.name} → completed/")
+            _log(f"보관: {f.name} → SunoOutput/completed/")
 
-    leftover = list(dl.glob("*.mp3"))
-    if leftover:
-        for f in leftover:
+    # ── 이 세션에서 새로 받은 나머지 파일만 삭제 (기존 파일 보호) ──
+    current = set(dl.glob("*.mp3"))
+    selected_set = {f for f in selected if f.exists()}
+    leftover = current - before_snap - selected_set
+    for f in leftover:
+        if f.exists():
             _log(f"삭제: {f.name}")
             f.unlink()
 

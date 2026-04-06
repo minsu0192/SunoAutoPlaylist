@@ -112,9 +112,14 @@ class QueueCard(ctk.CTkFrame):
     def _open_folder(self):
         try:
             cfg = Config.load()
+            # 키워드 폴더 (videos/upload scope)
             path = Path(cfg.output_dir) / self.item["keyword"]
+            # completed 폴더 (songs scope)
+            completed = Path.home() / "SunoOutput" / "completed"
             if path.exists():
                 subprocess.Popen(["open", str(path)])
+            elif completed.exists():
+                subprocess.Popen(["open", str(completed)])
             else:
                 messagebox.showinfo("안내", "폴더를 찾을 수 없습니다.")
         except Exception:
@@ -188,7 +193,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.2.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.3.2", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
