@@ -188,7 +188,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.0.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.2.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
