@@ -269,68 +269,71 @@ def _wait_and_download(actions: dict, dl_dir: Path, max_wait: int = 420) -> list
         return "duplicate"
 
     # ══════════════════════════════════════════════════════════
-    # 라운드 기반 다운로드 (25개 시나리오 시뮬레이션 검증 완료)
+    # 단순 선형 다운로드 — 루프 없음, 최대 4번 클릭
     #
-    # 핵심 규칙:
-    # 1. 버튼1 → 버튼2 순서로 시도
-    # 2. "new" 반환 → done_buttons에 추가 → 영구 스킵 (절대 재다운 안 함)
-    # 3. "duplicate" 반환 → 이번 라운드만 스킵 (다음 라운드에서 재시도)
-    # 4. "failed" 반환 → 다음 라운드에서 재시도
-    # 5. 2곡 달성 즉시 종료
-    # 6. 최대 8라운드, 최대 18회 시도
+    # 1차: btn1 시도 → btn2 시도
+    # 2곡이면 끝. 아니면 60초 대기.
+    # 2차: 실패한 버튼만 딱 1번 재시도
+    # 끝. 더 이상 시도 안 함.
+    #
+    # 성공한 버튼: 절대 다시 안 건드림
+    # 중복 버튼: 절대 다시 안 건드림 (같은 곡만 나옴)
+    # 실패 버튼만 1회 재시도
     # ══════════════════════════════════════════════════════════
 
-    buttons = [
-        ("song_dot_btn", "download_item", "mp3_btn", "곡1"),
-        ("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2"),
-    ]
-    MAX_ROUNDS = 8
-    MAX_ATTEMPTS = 18
-    total_attempts = 0
+    B1 = ("song_dot_btn", "download_item", "mp3_btn", "곡1")
+    B2 = ("song_dot_btn_2", "download_item_2", "mp3_btn_2", "곡2")
 
     _snap("시작")
 
-    done_buttons: set[int] = set()  # "new" 반환한 버튼 — 영구 스킵
+    # ── 1차: btn1 → btn2 ──
+    r1 = _try_one(*B1, "1차-곡1")
+    _snap("1차-곡1 후")
 
-    for rnd in range(MAX_ROUNDS):
+    if _unique_count() >= 2:
+        _delete_duplicates()
+        _log(f"🏁 1차에서 2곡 완료")
+        return _all_mp3s()
+
+    r2 = _try_one(*B2, "1차-곡2")
+    _snap("1차-곡2 후")
+
+    if _unique_count() >= 2:
+        _delete_duplicates()
+        _log(f"🏁 1차에서 2곡 완료")
+        return _all_mp3s()
+
+    # ── 부족 → 60초 대기 ──
+    failed = []
+    if r1 == "failed":
+        failed.append(B1)
+    if r2 == "failed":
+        failed.append(B2)
+    # "new" → 절대 재시도 안 함
+    # "duplicate" → 절대 재시도 안 함 (같은 곡만 나옴)
+    # "failed"만 재시도
+
+    if not failed:
+        _log(f"🏁 재시도 대상 없음 (고유 {_unique_count()}곡)")
+        _delete_duplicates()
+        return _all_mp3s()
+
+    _log(f"📊 고유 {_unique_count()}곡, 실패 {len(failed)}개 → 60초 대기 후 재시도")
+    for _ in range(12):  # 60초
+        _check_stop()
+        time.sleep(5)
+
+    # ── 2차: 실패한 버튼만 딱 1번 ──
+    for btn in failed:
         if _unique_count() >= 2:
             break
-
-        skip_this_round: set[int] = set()  # "duplicate" 반환 — 이 라운드만 스킵
-
-        for btn_idx, (dot, dl, mp3, label) in enumerate(buttons):
-            if _unique_count() >= 2:
-                _log(f"✅ 고유 2곡 달성!")
-                break
-            if btn_idx in done_buttons:
-                _log(f"[{label}] ⏭ 이미 성공한 버튼 → 영구 스킵")
-                continue
-            if btn_idx in skip_this_round:
-                _log(f"[{label}] ⏭ 이 라운드 스킵 (중복)")
-                continue
-            if total_attempts >= MAX_ATTEMPTS:
-                _log(f"⚠️ 최대 시도 도달 ({MAX_ATTEMPTS}회)")
-                break
-
-            total_attempts += 1
-            result = _try_one(dot, dl, mp3, f"R{rnd+1}-{label}")
-
-            if result == "new":
-                done_buttons.add(btn_idx)  # 이 버튼은 다시 안 건드림
-            elif result == "duplicate":
-                skip_this_round.add(btn_idx)
-
-        if _unique_count() < 2 and rnd < MAX_ROUNDS - 1:
-            _log(f"📊 고유 {_unique_count()}곡 — 30초 대기 후 라운드 {rnd+2}")
-            for _ in range(6):
-                _check_stop()
-                time.sleep(5)
+        _try_one(*btn, f"재시도-{btn[3]}")
+        _snap(f"재시도-{btn[3]} 후")
 
     _delete_duplicates()
-    result = _all_mp3s()
     _snap("최종")
-    _log(f"🏁 다운로드 완료: 고유 {_unique_count()}곡, 시도 {total_attempts}회")
-    return result
+    _log(f"🏁 다운로드 완료: 고유 {_unique_count()}곡")
+    return _all_mp3s()
 
 
 # ── 브라우저 ──
