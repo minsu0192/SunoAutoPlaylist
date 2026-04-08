@@ -174,6 +174,7 @@ class App(ctk.CTk):
 
         self.nav_btns = {}
         for name, label, icon in [("generator", " 작업 생성", "🎵"),
+                                  ("assemble", " 빠른 조립", "🎬"),
                                   ("settings", " 설정 관리", "⚙️"),
                                   ("logs", " 실행 로그", "📜")]:
             btn = ctk.CTkButton(self.sidebar, text=f"{icon}{label}",
@@ -193,7 +194,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.9.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.10.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -203,6 +204,7 @@ class App(ctk.CTk):
         # 각 페이지용 프레임 초기화
         self.pages = {}
         self._build_generator_page()
+        self._build_assemble_page()
         self._build_settings_page()
         self._build_logs_page()
 
@@ -289,6 +291,278 @@ class App(ctk.CTk):
                                         fg_color="#e74c3c", hover_color="#c0392b",
                                         command=self._on_stop, state="disabled")
         self._btn_stop.pack(side="left", padx=6)
+
+    # ──────────────────────────────────────────────────────────
+    # [페이지 1.5] 빠른 조립 (Assemble) — 기존 mp3 + 이미지로 영상 만들기
+    # ──────────────────────────────────────────────────────────
+    def _build_assemble_page(self):
+        page = ctk.CTkScrollableFrame(self.main_view, fg_color="transparent")
+        self.pages["assemble"] = page
+
+        ctk.CTkLabel(page, text="🎬 빠른 조립",
+                     font=("", 20, "bold")).pack(anchor="w", padx=30, pady=(30, 5))
+        ctk.CTkLabel(page, text="이미 받아둔 mp3와 이미지로 영상을 즉시 조립합니다.",
+                     font=("", 12), text_color="gray60").pack(anchor="w", padx=30, pady=(0, 20))
+
+        # ── 영상 제목 ──
+        title_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
+        title_card.pack(fill="x", padx=25, pady=(0, 10))
+        ctk.CTkLabel(title_card, text="영상 제목 (폴더명/파일명)", font=("", 13, "bold"),
+                     text_color="gray70").pack(anchor="w", padx=20, pady=(15, 5))
+        self._asm_title = ctk.CTkEntry(title_card, height=42,
+                                        placeholder_text="예: autumn_breeze_playlist",
+                                        border_width=0, fg_color="gray14")
+        self._asm_title.pack(fill="x", padx=20, pady=(0, 15))
+
+        # ── 음원 파일들 ──
+        mp3_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
+        mp3_card.pack(fill="x", padx=25, pady=10)
+
+        mp3_header = ctk.CTkFrame(mp3_card, fg_color="transparent")
+        mp3_header.pack(fill="x", padx=20, pady=(15, 5))
+        ctk.CTkLabel(mp3_header, text="🎵 음원 파일 (순서대로)",
+                     font=("", 13, "bold"), text_color="gray70").pack(side="left")
+        ctk.CTkButton(mp3_header, text="+ 추가", width=80, height=28,
+                      fg_color=ACCENT, hover_color="#7C3AED",
+                      command=self._asm_pick_mp3s).pack(side="right")
+        ctk.CTkButton(mp3_header, text="모두 삭제", width=80, height=28,
+                      fg_color="gray25", hover_color="#e74c3c",
+                      command=self._asm_clear_mp3s).pack(side="right", padx=5)
+
+        self._asm_mp3_frame = ctk.CTkFrame(mp3_card, fg_color="gray14", corner_radius=8)
+        self._asm_mp3_frame.pack(fill="x", padx=20, pady=(5, 15))
+        self._asm_mp3_paths: list[Path] = []
+        self._asm_mp3_label = ctk.CTkLabel(self._asm_mp3_frame, text="선택된 파일 없음",
+                                            text_color="gray50", font=("", 11))
+        self._asm_mp3_label.pack(pady=15)
+
+        # ── 배경 이미지 ──
+        img_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
+        img_card.pack(fill="x", padx=25, pady=10)
+
+        img_header = ctk.CTkFrame(img_card, fg_color="transparent")
+        img_header.pack(fill="x", padx=20, pady=(15, 5))
+        ctk.CTkLabel(img_header, text="🖼 배경 이미지 (1장)",
+                     font=("", 13, "bold"), text_color="gray70").pack(side="left")
+        ctk.CTkButton(img_header, text="선택", width=80, height=28,
+                      fg_color=ACCENT, hover_color="#7C3AED",
+                      command=self._asm_pick_image).pack(side="right")
+
+        self._asm_img_path: Path | None = None
+        self._asm_img_label = ctk.CTkLabel(img_card, text="선택된 이미지 없음",
+                                            text_color="gray50", font=("", 11))
+        self._asm_img_label.pack(pady=(0, 15))
+
+        # ── 옵션 ──
+        opt_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
+        opt_card.pack(fill="x", padx=25, pady=10)
+        ctk.CTkLabel(opt_card, text="⚙️ 옵션", font=("", 13, "bold"),
+                     text_color="gray70").pack(anchor="w", padx=20, pady=(15, 10))
+
+        # 실행 범위
+        scope_row = ctk.CTkFrame(opt_card, fg_color="transparent")
+        scope_row.pack(fill="x", padx=20, pady=(0, 10))
+        ctk.CTkLabel(scope_row, text="실행 범위", width=120,
+                     anchor="w").pack(side="left")
+        self._asm_scope = ctk.StringVar(value="video")
+        ctk.CTkSegmentedButton(scope_row, values=["video", "upload"],
+                                variable=self._asm_scope,
+                                fg_color="gray20",
+                                selected_color=ACCENT).pack(side="left")
+        ctk.CTkLabel(scope_row, text="  video=영상만 / upload=영상+YouTube",
+                     font=("", 10), text_color="gray50").pack(side="left", padx=10)
+
+        # 썸네일 텍스트 (오버라이드 가능)
+        thumb_row = ctk.CTkFrame(opt_card, fg_color="transparent")
+        thumb_row.pack(fill="x", padx=20, pady=(0, 10))
+        ctk.CTkLabel(thumb_row, text="썸네일 문구", width=120,
+                     anchor="w").pack(side="left")
+        self._asm_thumb_text = ctk.CTkEntry(thumb_row, height=32,
+                                             placeholder_text="비워두면 설정값 사용",
+                                             border_width=0, fg_color="gray14")
+        self._asm_thumb_text.pack(side="left", fill="x", expand=True)
+
+        # 썸네일 사이즈
+        size_row = ctk.CTkFrame(opt_card, fg_color="transparent")
+        size_row.pack(fill="x", padx=20, pady=(0, 15))
+        ctk.CTkLabel(size_row, text="썸네일 크기", width=120,
+                     anchor="w").pack(side="left")
+        self._asm_thumb_size = ctk.StringVar(value="M")
+        ctk.CTkSegmentedButton(size_row, values=["M", "XL"],
+                                variable=self._asm_thumb_size,
+                                fg_color="gray20",
+                                selected_color=ACCENT).pack(side="left")
+
+        # ── 진행 상황 ──
+        prog_frame = ctk.CTkFrame(page, fg_color="transparent")
+        prog_frame.pack(fill="x", padx=25, pady=(15, 5))
+        self._asm_progress_bar = ctk.CTkProgressBar(prog_frame, height=8,
+                                                     progress_color=ACCENT)
+        self._asm_progress_bar.pack(fill="x")
+        self._asm_progress_bar.set(0)
+        self._asm_progress_label = ctk.CTkLabel(prog_frame, text="",
+                                                 font=("", 11), text_color="gray50",
+                                                 wraplength=600, justify="left")
+        self._asm_progress_label.pack(pady=(5, 0))
+
+        # ── 실행 버튼 ──
+        ctk.CTkButton(page, text="▶ 조립 시작", height=50, fg_color=ACCENT,
+                      hover_color="#7C3AED", font=("", 15, "bold"),
+                      command=self._asm_run).pack(fill="x", padx=25, pady=(15, 30))
+
+    def _asm_pick_mp3s(self):
+        paths = filedialog.askopenfilenames(
+            title="음원 파일 선택 (순서대로 선택)",
+            filetypes=[("MP3", "*.mp3")],
+        )
+        for p in paths:
+            self._asm_mp3_paths.append(Path(p))
+        self._asm_refresh_mp3_list()
+
+    def _asm_clear_mp3s(self):
+        self._asm_mp3_paths = []
+        self._asm_refresh_mp3_list()
+
+    def _asm_refresh_mp3_list(self):
+        # 기존 내용 지우기
+        for w in self._asm_mp3_frame.winfo_children():
+            w.destroy()
+
+        if not self._asm_mp3_paths:
+            self._asm_mp3_label = ctk.CTkLabel(self._asm_mp3_frame,
+                                                text="선택된 파일 없음",
+                                                text_color="gray50", font=("", 11))
+            self._asm_mp3_label.pack(pady=15)
+            return
+
+        for i, p in enumerate(self._asm_mp3_paths):
+            row = ctk.CTkFrame(self._asm_mp3_frame, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=2)
+            ctk.CTkLabel(row, text=f"{i+1:2d}.", width=30,
+                         text_color="gray50").pack(side="left")
+            ctk.CTkLabel(row, text=p.name, anchor="w",
+                         text_color="white").pack(side="left", fill="x", expand=True)
+            ctk.CTkButton(row, text="✕", width=24, height=24,
+                          fg_color="transparent", hover_color="#e74c3c",
+                          text_color="gray50",
+                          command=lambda idx=i: self._asm_remove_mp3(idx)).pack(side="right")
+
+    def _asm_remove_mp3(self, idx):
+        if 0 <= idx < len(self._asm_mp3_paths):
+            self._asm_mp3_paths.pop(idx)
+            self._asm_refresh_mp3_list()
+
+    def _asm_pick_image(self):
+        path = filedialog.askopenfilename(
+            title="배경 이미지 선택",
+            filetypes=[("이미지", "*.png *.jpg *.jpeg *.webp")],
+        )
+        if path:
+            self._asm_img_path = Path(path)
+            self._asm_img_label.configure(text=f"📷 {self._asm_img_path.name}",
+                                          text_color="white")
+
+    def _asm_run(self):
+        # 검증
+        title = self._asm_title.get().strip()
+        if not title:
+            messagebox.showwarning("입력 필요", "영상 제목을 입력하세요.")
+            return
+        if not self._asm_mp3_paths:
+            messagebox.showwarning("입력 필요", "음원 파일을 1개 이상 선택하세요.")
+            return
+        if not self._asm_img_path or not self._asm_img_path.exists():
+            messagebox.showwarning("입력 필요", "배경 이미지를 선택하세요.")
+            return
+
+        scope = self._asm_scope.get()
+        thumb_text = self._asm_thumb_text.get().strip() or self._config.thumbnail_text or "Seoul Diary Playlist"
+        thumb_size = self._asm_thumb_size.get()
+
+        # 백그라운드 스레드에서 실행
+        def _progress(msg, pct):
+            self.after(0, lambda: self._asm_progress_bar.set(pct))
+            self.after(0, lambda: self._asm_progress_label.configure(text=msg))
+
+        def _run():
+            try:
+                self._asm_assemble(title, self._asm_mp3_paths,
+                                   self._asm_img_path, scope,
+                                   thumb_text, thumb_size, _progress)
+            except Exception as e:
+                tb = traceback.format_exc()
+                self.after(0, lambda: messagebox.showerror("조립 실패", f"{e}\n\n{tb[-500:]}"))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _asm_assemble(self, title, mp3_paths, img_path, scope, thumb_text, thumb_size, progress):
+        from media_proc import make_video, make_thumbnail, build_tracklist
+        import time as _t
+
+        cfg = self._config
+        output_base = Path(cfg.output_dir) / self._safe_name(title)
+        output_base.mkdir(parents=True, exist_ok=True)
+
+        # [1] 썸네일 생성
+        progress(f"[1/3] 썸네일 생성 중... ('{thumb_text}', {thumb_size})", 0.15)
+        thumb_path = output_base / "thumbnail.jpg"
+        make_thumbnail(img_path, thumb_text, thumb_path,
+                       channel_name=thumb_text, size_preset=thumb_size)
+
+        # [2] 영상 조립
+        progress(f"[2/3] MP4 영상 조립 중... ({len(mp3_paths)}곡)", 0.35)
+        output_mp4 = output_base / f"{self._safe_name(title)}.mp4"
+        make_video(mp3_paths, thumb_path, output_mp4)
+        size_mb = output_mp4.stat().st_size / 1024 / 1024
+        progress(f"[2/3] 영상 완료: {output_mp4.name} ({size_mb:.1f} MB)", 0.6)
+
+        if scope == "video":
+            progress(f"✅ 완료: {output_mp4}", 1.0)
+            self.after(0, lambda: subprocess.Popen(["open", str(output_base)]))
+            return
+
+        # [3] YouTube 업로드
+        if not cfg.youtube_client_secrets:
+            progress("⚠️ YouTube 미설정 → 영상만 생성", 1.0)
+            return
+
+        progress("[3/3] YouTube 업로드 중...", 0.7)
+        from yt_upload import YouTubeUploader
+
+        # 트랙리스트 (파일명을 제목으로 사용)
+        tracks = [(p, p.stem) for p in mp3_paths]
+        tracklist = build_tracklist(tracks)
+
+        # YouTube 메타데이터
+        from lyrics_gen import generate_youtube_info
+        try:
+            yt_info = generate_youtube_info(title, len(mp3_paths), cfg.anthropic_api_key)
+        except Exception:
+            yt_info = {"title": title, "description": title, "tags": [title]}
+
+        description = yt_info["description"]
+        if tracklist:
+            description = f"{description}\n\n📌 Tracklist\n{tracklist}"
+
+        # 사진작가 크레딧 (있으면)
+        from lyrics_gen import read_image_credit
+        credit = read_image_credit(img_path)
+        if credit:
+            description = f"{description}\n\n{credit}"
+
+        uploader = YouTubeUploader()
+        url = uploader.upload(
+            video_path=output_mp4, title=yt_info["title"],
+            description=description, tags=yt_info["tags"],
+            playlist_id=cfg.youtube_playlist_id or "",
+            privacy=cfg.youtube_privacy,
+        )
+        progress(f"✅ 업로드 완료: {url}", 1.0)
+        self.after(0, lambda: subprocess.Popen(["open", url]))
+
+    @staticmethod
+    def _safe_name(text: str) -> str:
+        return "".join(c if c.isalnum() or c in " _-가-힣" else "_" for c in text).strip()[:50] or "untitled"
 
     # ──────────────────────────────────────────────────────────
     # [페이지 2] 설정 (Settings)
