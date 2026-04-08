@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('config.py', '.'), ('queue_manager.py', '.'), ('pipeline.py', '.'), ('suno_bot.py', '.'), ('lyrics_gen.py', '.'), ('media_proc.py', '.'), ('yt_upload.py', '.'), ('learn.py', '.')]
+datas = [('config.py', '.'), ('queue_manager.py', '.'), ('pipeline.py', '.'), ('suno_bot.py', '.'), ('lyrics_gen.py', '.'), ('media_proc.py', '.'), ('yt_upload.py', '.'), ('learn.py', '.'), ('job_manager.py', '.')]
 binaries = []
 hiddenimports = ['tkinterdnd2', 'pyautogui', 'anthropic', 'Quartz', 'googleapiclient', 'google_auth_oauthlib']
 tmp_ret = collect_all('tkinterdnd2')
