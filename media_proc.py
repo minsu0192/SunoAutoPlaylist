@@ -103,6 +103,63 @@ def make_thumbnail(
     return output_path
 
 
+def get_audio_duration(mp3_path: Path) -> float:
+    """ffprobe로 mp3 파일 길이(초) 측정. 실패 시 0.0."""
+    ffmpeg = _check_ffmpeg()
+    ffprobe = ffmpeg.replace("ffmpeg", "ffprobe")
+    if not Path(ffprobe).exists():
+        ffprobe = shutil.which("ffprobe") or "ffprobe"
+    try:
+        r = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(mp3_path)],
+            capture_output=True, text=True, timeout=30,
+        )
+        return float(r.stdout.strip())
+    except Exception:
+        return 0.0
+
+
+def build_tracklist(tracks: list[tuple[Path, str]]) -> str:
+    """
+    YouTube 자동 챕터용 트랙리스트 생성.
+    YouTube 요구사항:
+    - 첫 줄은 반드시 00:00
+    - 최소 3개 타임스탬프
+    - 각 챕터 최소 10초
+    - 시간 오름차순
+
+    Format:
+        00:00 Track 1
+        02:33 Track 2
+        ...
+    """
+    if not tracks:
+        return ""
+
+    lines = []
+    cumulative = 0.0
+    for mp3, title in tracks:
+        # 분:초 또는 시:분:초 포맷
+        total_sec = int(cumulative)
+        if total_sec >= 3600:
+            h = total_sec // 3600
+            m = (total_sec % 3600) // 60
+            s = total_sec % 60
+            ts = f"{h}:{m:02d}:{s:02d}"
+        else:
+            m = total_sec // 60
+            s = total_sec % 60
+            ts = f"{m:02d}:{s:02d}"
+        lines.append(f"{ts} {title}")
+
+        # 다음 트랙 시작 시각 = 이전 누적 + 이 트랙 길이
+        duration = get_audio_duration(mp3)
+        cumulative += duration
+
+    return "\n".join(lines)
+
+
 def _check_ffmpeg() -> str:
     """ffmpeg 실행 파일 경로를 반환한다. 없으면 RuntimeError."""
     # .app 번들에서는 PATH에 /opt/homebrew/bin이 없을 수 있으므로 직접 탐색

@@ -14,7 +14,7 @@ from typing import Callable, Optional
 
 from config import Config
 from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image, fetch_unsplash_image, read_image_credit
-from media_proc import make_video, make_thumbnail
+from media_proc import make_video, make_thumbnail, build_tracklist
 import suno_bot
 from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser, _log
 from yt_upload import YouTubeUploader
@@ -166,10 +166,12 @@ class Pipeline:
         _log(f"실행 범위: {scope} | vocal_pick: {cfg.vocal_pick}")
         setup_browser()
 
-        all_mp3s: list[Path] = []
-        kr_mp3s: list[Path] = []
-        en_mp3s: list[Path] = []
-        inst_mp3s: list[Path] = []
+        # 각 mp3와 곡 제목 매핑 (트랙리스트 생성용)
+        # tuples: (mp3_path, song_title)
+        all_tracks: list[tuple[Path, str]] = []
+        kr_tracks: list[tuple[Path, str]] = []
+        en_tracks: list[tuple[Path, str]] = []
+        inst_tracks: list[tuple[Path, str]] = []
         current = 0
 
         # 한국어 세션
@@ -186,7 +188,8 @@ class Pipeline:
                     title=song_info["title"],
                     vocal_pick=cfg.vocal_pick,
                 )
-                kr_mp3s.extend(mp3s)
+                for mp3 in mp3s:
+                    kr_tracks.append((mp3, song_info["title"]))
             except Exception as e:
                 raise RuntimeError(f"한국어 세션 {idx + 1} 실패: {e}") from e
 
@@ -204,22 +207,23 @@ class Pipeline:
                     title=song_info["title"],
                     vocal_pick=cfg.vocal_pick,
                 )
-                en_mp3s.extend(mp3s)
+                for mp3 in mp3s:
+                    en_tracks.append((mp3, song_info["title"]))
             except Exception as e:
                 raise RuntimeError(f"영어 세션 {idx + 1} 실패: {e}") from e
 
-        # 언어별 트리밍 (요청한 수만큼만)
-        def _trim(mp3s: list[Path], want: int) -> list[Path]:
-            if len(mp3s) > want > 0:
-                for f in mp3s[want:]:
-                    try: f.unlink()
+        # 언어별 트리밍
+        def _trim_tracks(tracks: list[tuple[Path, str]], want: int) -> list[tuple[Path, str]]:
+            if len(tracks) > want > 0:
+                for mp3, _ in tracks[want:]:
+                    try: mp3.unlink()
                     except Exception: pass
-                return mp3s[:want]
-            return mp3s
+                return tracks[:want]
+            return tracks
 
-        kr_mp3s = _trim(kr_mp3s, cfg.korean_songs)
-        en_mp3s = _trim(en_mp3s, cfg.english_songs)
-        vocal_mp3s = kr_mp3s + en_mp3s
+        kr_tracks = _trim_tracks(kr_tracks, cfg.korean_songs)
+        en_tracks = _trim_tracks(en_tracks, cfg.english_songs)
+        vocal_tracks = kr_tracks + en_tracks
 
         # Instrumental 세션
         for i in range(inst_sessions):
@@ -228,21 +232,19 @@ class Pipeline:
             _check_stop()
             try:
                 mp3s = run_suno_instrumental(description=inst_desc)
-                inst_mp3s.extend(mp3s)
+                for mp3 in mp3s:
+                    inst_tracks.append((mp3, f"Instrumental {i+1}"))
             except Exception as e:
                 raise RuntimeError(f"Instrumental 세션 {i + 1} 실패: {e}") from e
 
-        # Instrumental 곡 수 트리밍
-        if len(inst_mp3s) > cfg.instrumental_songs and cfg.instrumental_songs > 0:
-            excess = inst_mp3s[cfg.instrumental_songs:]
-            inst_mp3s = inst_mp3s[:cfg.instrumental_songs]
-            for f in excess:
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
+        if len(inst_tracks) > cfg.instrumental_songs and cfg.instrumental_songs > 0:
+            for mp3, _ in inst_tracks[cfg.instrumental_songs:]:
+                try: mp3.unlink()
+                except Exception: pass
+            inst_tracks = inst_tracks[:cfg.instrumental_songs]
 
-        all_mp3s = vocal_mp3s + inst_mp3s
+        all_tracks = vocal_tracks + inst_tracks
+        all_mp3s = [mp3 for mp3, _ in all_tracks]
 
         if not all_mp3s:
             raise RuntimeError(
@@ -313,8 +315,18 @@ class Pipeline:
         uploader = YouTubeUploader()
 
         title = yt_info["title"]
-        # 사진작가 크레딧을 설명에 자동 추가
+
+        # 트랙리스트 생성 (YouTube 자동 챕터용)
+        _log("트랙리스트 생성 중...")
+        tracklist = build_tracklist(all_tracks)
+        if tracklist:
+            _log(f"트랙리스트:\n{tracklist}")
+
+        # 설명 조립: 본문 + 트랙리스트 + 크레딧
         description = yt_info["description"]
+        if tracklist:
+            description = f"{description}\n\n📌 Tracklist\n{tracklist}"
+
         credit = read_image_credit(image_path)
         if credit:
             description = f"{description}\n\n{credit}"
