@@ -513,3 +513,124 @@ def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | No
         _save_image_history(history)
 
     return save_path
+
+
+# ──────────────────────────────────────────────────
+# Unsplash (고퀄 시네마틱 이미지)
+# ──────────────────────────────────────────────────
+
+UNSPLASH_HISTORY_FILE = Path.home() / ".suno_unsplash_history.json"
+
+
+def _load_unsplash_history() -> set[str]:
+    if not UNSPLASH_HISTORY_FILE.exists():
+        return set()
+    try:
+        data = json.loads(UNSPLASH_HISTORY_FILE.read_text(encoding="utf-8"))
+        return set(str(x) for x in data)
+    except Exception:
+        return set()
+
+
+def _save_unsplash_history(history: set[str]) -> None:
+    try:
+        kept = sorted(history)[-1000:]
+        UNSPLASH_HISTORY_FILE.write_text(json.dumps(kept), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def fetch_unsplash_image(keyword: str, access_key: str, save_dir: Path) -> Path | None:
+    """
+    Unsplash에서 시네마틱 감성 이미지를 다운로드.
+
+    전략:
+    1. 한글 키워드 → 영어 동의어 풀에서 랜덤 선택
+    2. 감성 모디파이어 추가
+    3. per_page=30, orientation=landscape
+    4. 랜덤 페이지(1~3)
+    5. 이미지 ID 이력 제외
+    """
+    import urllib.request
+    import urllib.parse
+
+    if not access_key:
+        return None
+
+    save_dir.mkdir(parents=True, exist_ok=True)
+    history = _load_unsplash_history()
+
+    def _search(search_term: str, page: int) -> list[dict]:
+        query = urllib.parse.quote(search_term)
+        url = (
+            f"https://api.unsplash.com/search/photos?query={query}"
+            f"&per_page=30&page={page}&orientation=landscape&content_filter=high"
+        )
+        try:
+            req = urllib.request.Request(url, headers={
+                "Authorization": f"Client-ID {access_key}",
+                "Accept-Version": "v1",
+            })
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+            return data.get("results", [])
+        except Exception:
+            return []
+
+    chosen = None
+    for attempt in range(5):
+        simple = attempt >= 3
+        search_term = _keyword_to_english(keyword, simple=simple)
+        page = random.randint(1, 3)
+        hits = _search(search_term, page)
+
+        if not hits:
+            hits = _search(search_term, 1)
+            if not hits:
+                continue
+
+        fresh = [h for h in hits if str(h.get("id")) not in history]
+
+        if fresh:
+            chosen = random.choice(fresh)
+            break
+
+    if chosen is None:
+        hits = _search("cinematic aesthetic landscape", 1)
+        if not hits:
+            return None
+        chosen = random.choice(hits)
+
+    # Unsplash는 urls 안에 다양한 크기 제공: raw/full/regular/small
+    urls = chosen.get("urls", {})
+    img_url = urls.get("regular") or urls.get("full") or urls.get("raw")
+    if not img_url:
+        return None
+
+    img_id = str(chosen.get("id", ""))
+    safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in keyword)[:30]
+    save_path = save_dir / f"{safe_name}_{img_id}.jpg"
+
+    try:
+        req = urllib.request.Request(img_url, headers={"User-Agent": "SunoAutoPlaylist/1.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            save_path.write_bytes(resp.read())
+    except Exception:
+        return None
+
+    # Unsplash API 가이드라인: 다운로드 트리거 핑
+    download_url = chosen.get("links", {}).get("download_location")
+    if download_url:
+        try:
+            req = urllib.request.Request(download_url, headers={
+                "Authorization": f"Client-ID {access_key}",
+            })
+            urllib.request.urlopen(req, timeout=10).read()
+        except Exception:
+            pass
+
+    if img_id:
+        history.add(img_id)
+        _save_unsplash_history(history)
+
+    return save_path

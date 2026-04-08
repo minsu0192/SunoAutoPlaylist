@@ -17,6 +17,7 @@ CONFIG_FILE = Path.home() / ".suno_auto.json"
 class Config:
     anthropic_api_key: str = ""
     pixabay_api_key: str = ""
+    unsplash_access_key: str = ""
     korean_songs: int = 3
     english_songs: int = 3
     instrumental_songs: int = 0

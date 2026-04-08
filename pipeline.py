@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from config import Config
-from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image
+from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image, fetch_unsplash_image
 from media_proc import make_video, make_thumbnail
 import suno_bot
 from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser, _log
@@ -41,17 +41,30 @@ class Pipeline:
         # 중단 플래그를 suno_bot에 전달
         suno_bot.stop_flag = stop_event
 
-        # 이미지 없으면 Pixabay에서 자동 다운로드 시도
+        # 이미지 없으면 Unsplash → Pixabay 순으로 자동 다운로드 시도
         if not image_path and scope in ("videos", "upload"):
-            if cfg.pixabay_api_key:
-                _log("[Pixabay] 배경 이미지 검색 중...")
-                dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key,
-                                          Path(cfg.output_dir) / "images")
+            img_dir = Path(cfg.output_dir) / "images"
+
+            # 1순위: Unsplash (시네마틱 고퀄)
+            if cfg.unsplash_access_key:
+                _log("[Unsplash] 배경 이미지 검색 중...")
+                dl = fetch_unsplash_image(keyword, cfg.unsplash_access_key, img_dir)
+                if dl:
+                    image_path = dl
+                    _log(f"[Unsplash] 이미지 다운로드 완료: {dl.name}")
+                else:
+                    _log("[Unsplash] 이미지를 찾지 못함")
+
+            # 2순위: Pixabay fallback
+            if not image_path and cfg.pixabay_api_key:
+                _log("[Pixabay] fallback 이미지 검색 중...")
+                dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key, img_dir)
                 if dl:
                     image_path = dl
                     _log(f"[Pixabay] 이미지 다운로드 완료: {dl.name}")
                 else:
                     _log("[Pixabay] 이미지를 찾지 못함")
+
             if not image_path:
                 _log("⚠️ 이미지 없음 → 곡 생성만 진행 (영상/업로드 생략)")
                 scope = "songs"

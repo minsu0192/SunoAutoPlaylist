@@ -193,7 +193,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.3.2", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.6.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -311,7 +311,8 @@ class App(ctk.CTk):
         sec_api.pack(fill="x", padx=25)
 
         self._add_setting_row(sec_api, "Anthropic API Key", "anthropic_api_key", placeholder="sk-ant-...")
-        self._add_setting_row(sec_api, "Pixabay API Key", "pixabay_api_key", placeholder="이미지 자동 검색용 (선택)")
+        self._add_setting_row(sec_api, "Unsplash Access Key", "unsplash_access_key", placeholder="시네마틱 이미지 (1순위, 권장)")
+        self._add_setting_row(sec_api, "Pixabay API Key", "pixabay_api_key", placeholder="이미지 자동 검색용 (2순위 fallback)")
 
         # ── 곡 생성 설정 ──
         sec_song = add_section("🎵 생성 옵션")
