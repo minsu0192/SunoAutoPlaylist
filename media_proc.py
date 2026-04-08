@@ -36,6 +36,15 @@ def _crop_resize(img: Image.Image, width: int, height: int) -> Image.Image:
     return img.resize((width, height), Image.LANCZOS)
 
 
+# 사이즈 프리셋 (Bodoni 72 Bold 기준)
+THUMBNAIL_SIZE_PRESETS = {
+    "S":  {"font_size": 110, "line_height": 75,  "shadow": 2},
+    "M":  {"font_size": 170, "line_height": 105, "shadow": 3},
+    "L":  {"font_size": 220, "line_height": 135, "shadow": 4},
+    "XL": {"font_size": 280, "line_height": 170, "shadow": 5},
+}
+
+
 def make_thumbnail(
     bg_image: Path,
     title: str,
@@ -43,11 +52,17 @@ def make_thumbnail(
     channel_name: str = "Seoul Diary Playlist",
     width: int = 1920,
     height: int = 1080,
+    size_preset: str = "M",
 ) -> Path:
     """
     essential; 스타일 썸네일 생성.
-    큰 볼드 채널명 중앙 + 점선 구분선 + 밝은 배경
+    배경 위에 channel_name 텍스트 (사이즈 프리셋: S/M/L/XL).
     """
+    preset = THUMBNAIL_SIZE_PRESETS.get(size_preset, THUMBNAIL_SIZE_PRESETS["M"])
+    font_size = preset["font_size"]
+    line_height = preset["line_height"]
+    shadow = preset["shadow"]
+
     img = Image.open(bg_image).convert("RGB")
     img = _crop_resize(img, width, height)
 
@@ -59,19 +74,18 @@ def make_thumbnail(
 
     draw = ImageDraw.Draw(img)
 
-    # 채널명 폰트 (Bodoni 72 Bold, 크게)
+    # 폰트 (Bodoni 72 Bold)
     _FONT_BODONI = "/System/Library/Fonts/Supplemental/Bodoni 72.ttc"
     try:
-        font_big = ImageFont.truetype(_FONT_BODONI, 170, index=1)
+        font_big = ImageFont.truetype(_FONT_BODONI, font_size, index=1)
     except Exception:
         try:
-            font_big = ImageFont.truetype(_FONT_BOLD, 170)
+            font_big = ImageFont.truetype(_FONT_BOLD, font_size)
         except Exception:
-            font_big = ImageFont.truetype(_FONT_KOREAN, 170)
+            font_big = ImageFont.truetype(_FONT_KOREAN, font_size)
 
-    # 채널명 텍스트 (줄바꿈 지원)
+    # 텍스트 (줄바꿈 지원)
     lines = channel_name.split("\n")
-    line_height = 105
     total_text_h = line_height * len(lines)
     y_start = (height - total_text_h) // 2 - 15
 
@@ -80,8 +94,8 @@ def make_thumbnail(
         line_w = bbox[2] - bbox[0]
         x = (width - line_w) // 2
         y = y_start + i * line_height
-        # 텍스트 그림자 (가독성)
-        draw.text((x + 3, y + 3), line, fill=(0, 0, 0, 80), font=font_big)
+        # 텍스트 그림자
+        draw.text((x + shadow, y + shadow), line, fill=(0, 0, 0, 80), font=font_big)
         draw.text((x, y), line, fill="white", font=font_big)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

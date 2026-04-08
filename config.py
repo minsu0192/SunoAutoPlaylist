@@ -27,6 +27,9 @@ class Config:
     youtube_playlist_id: str = ""
     youtube_privacy: str = "public"
     output_dir: str = str(Path.home() / "SunoOutput")
+    # 썸네일 커스터마이징
+    thumbnail_text: str = "Seoul Diary Playlist"
+    thumbnail_size: str = "M"  # "S", "M", "L", "XL"
     # ------------------------------------------------------------------ #
     # 클래스 메서드                                                         #
     # ------------------------------------------------------------------ #

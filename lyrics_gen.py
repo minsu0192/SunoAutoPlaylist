@@ -633,4 +633,45 @@ def fetch_unsplash_image(keyword: str, access_key: str, save_dir: Path) -> Path 
         history.add(img_id)
         _save_unsplash_history(history)
 
+    # 사진작가 메타데이터를 사이드카 파일로 저장 (YouTube 설명용)
+    user = chosen.get("user", {})
+    photographer_name = user.get("name", "Unknown")
+    photographer_username = user.get("username", "")
+    photographer_url = user.get("links", {}).get("html", "")
+    image_url = chosen.get("links", {}).get("html", "")
+
+    meta = {
+        "source": "unsplash",
+        "photographer_name": photographer_name,
+        "photographer_username": photographer_username,
+        "photographer_url": photographer_url,
+        "image_url": image_url,
+        "image_id": img_id,
+    }
+    try:
+        meta_path = save_path.with_suffix(save_path.suffix + ".meta.json")
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
     return save_path
+
+
+def read_image_credit(image_path: Path) -> str:
+    """이미지 옆의 .meta.json 파일에서 크레딧 문구를 생성한다."""
+    if not image_path:
+        return ""
+    meta_path = image_path.with_suffix(image_path.suffix + ".meta.json")
+    if not meta_path.exists():
+        return ""
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("source") == "unsplash":
+            name = meta.get("photographer_name", "Unknown")
+            username = meta.get("photographer_username", "")
+            if username:
+                return f"📸 Photo by {name} (@{username}) on Unsplash"
+            return f"📸 Photo by {name} on Unsplash"
+    except Exception:
+        pass
+    return ""

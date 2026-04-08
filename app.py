@@ -193,7 +193,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.6.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.7.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -329,6 +329,13 @@ class App(ctk.CTk):
 
         self._add_setting_segmented(sec_song, "보컬 선택 (2곡 중)", "vocal_pick", ["longer", "shorter", "random", "both"])
         self._add_setting_segmented(sec_song, "실행 범위", "pipeline_scope", ["songs", "videos", "upload"])
+
+        # ── 썸네일 설정 ──
+        sec_thumb = add_section("🖼 썸네일 텍스트")
+        sec_thumb.pack(fill="x", padx=25)
+
+        self._add_setting_row(sec_thumb, "썸네일 문구", "thumbnail_text", placeholder="Seoul Diary Playlist")
+        self._add_setting_segmented(sec_thumb, "글씨 크기", "thumbnail_size", ["S", "M", "L", "XL"])
 
         # ── YouTube ──
         sec_yt = add_section("📺 YouTube 설정")

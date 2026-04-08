@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from config import Config
-from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image, fetch_unsplash_image
+from lyrics_gen import generate_song_content, generate_instrumental_description, generate_youtube_info, fetch_pixabay_image, fetch_unsplash_image, read_image_credit
 from media_proc import make_video, make_thumbnail
 import suno_bot
 from suno_bot import load_actions, run_suno_session, run_suno_instrumental, setup_browser, _log
@@ -263,15 +263,19 @@ class Pipeline:
         output_base = Path(cfg.output_dir) / self._safe_dirname(keyword)
         output_base.mkdir(parents=True, exist_ok=True)
 
-        # YouTube 제목으로 썸네일 생성
-        yt_title = yt_info["title"] if yt_info else keyword
-        _log(f"=== 썸네일 생성: {yt_title} ===")
+        # 썸네일 생성 (사용자 지정 텍스트 + 사이즈 프리셋)
+        thumbnail_text = cfg.thumbnail_text or "Seoul Diary Playlist"
+        thumbnail_size = cfg.thumbnail_size or "M"
+        _log(f"=== 썸네일 생성: '{thumbnail_text}' (크기 {thumbnail_size}) ===")
         _progress("썸네일 생성 중...", 4, total_steps)
         thumb_path = output_base / "thumbnail.jpg"
         try:
-            make_thumbnail(image_path, yt_title, thumb_path)
+            make_thumbnail(
+                image_path, thumbnail_text, thumb_path,
+                channel_name=thumbnail_text,
+                size_preset=thumbnail_size,
+            )
             _log(f"썸네일 완료: {thumb_path.name}")
-            # 이후 영상에 썸네일 이미지 사용
             video_image = thumb_path
         except Exception as e:
             _log(f"썸네일 생성 실패, 원본 이미지 사용: {e}")
@@ -309,11 +313,17 @@ class Pipeline:
         uploader = YouTubeUploader()
 
         title = yt_info["title"]
+        # 사진작가 크레딧을 설명에 자동 추가
+        description = yt_info["description"]
+        credit = read_image_credit(image_path)
+        if credit:
+            description = f"{description}\n\n{credit}"
+            _log(f"크레딧 추가: {credit}")
         _log(f"YouTube 업로드: {title}")
         try:
             url = uploader.upload(
                 video_path=output_mp4, title=title,
-                description=yt_info["description"], tags=yt_info["tags"],
+                description=description, tags=yt_info["tags"],
                 playlist_id=cfg.youtube_playlist_id or "", privacy=cfg.youtube_privacy,
             )
             _log(f"업로드 완료: {url}")
