@@ -194,7 +194,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.10.1", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.10.2", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -329,12 +329,12 @@ class App(ctk.CTk):
                       fg_color="gray25", hover_color="#e74c3c",
                       command=self._asm_clear_mp3s).pack(side="right", padx=5)
 
-        self._asm_mp3_frame = ctk.CTkFrame(mp3_card, fg_color="gray14", corner_radius=8)
+        self._asm_mp3_frame = ctk.CTkFrame(mp3_card, fg_color="gray14", corner_radius=8,
+                                            border_width=1, border_color="gray25",
+                                            height=120)
         self._asm_mp3_frame.pack(fill="x", padx=20, pady=(5, 15))
+        self._asm_mp3_frame.pack_propagate(False)
         self._asm_mp3_paths: list[Path] = []
-        self._asm_mp3_label = ctk.CTkLabel(self._asm_mp3_frame, text="선택된 파일 없음",
-                                            text_color="gray50", font=("", 11))
-        self._asm_mp3_label.pack(pady=15)
 
         # ── 배경 이미지 ──
         img_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
@@ -349,9 +349,16 @@ class App(ctk.CTk):
                       command=self._asm_pick_image).pack(side="right")
 
         self._asm_img_path: Path | None = None
-        self._asm_img_label = ctk.CTkLabel(img_card, text="선택된 이미지 없음",
-                                            text_color="gray50", font=("", 11))
-        self._asm_img_label.pack(pady=(0, 15))
+        self._asm_img_drop = ctk.CTkFrame(img_card, fg_color="gray14",
+                                           corner_radius=8,
+                                           border_width=1, border_color="gray25",
+                                           height=80)
+        self._asm_img_drop.pack(fill="x", padx=20, pady=(5, 15))
+        self._asm_img_drop.pack_propagate(False)
+        self._asm_img_label = ctk.CTkLabel(self._asm_img_drop,
+                                            text="🖼 이미지를 여기로 드래그하거나 '선택' 클릭",
+                                            text_color="gray50", font=("", 12))
+        self._asm_img_label.pack(expand=True)
 
         # ── 옵션 ──
         opt_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=12)
@@ -418,20 +425,16 @@ class App(ctk.CTk):
         try:
             from tkinterdnd2 import DND_FILES
 
-            # mp3 영역
+            # mp3 영역 (frame + 자식 label)
             self._asm_mp3_frame.drop_target_register(DND_FILES)
             self._asm_mp3_frame.dnd_bind("<<Drop>>", self._asm_on_drop_mp3)
 
-            # 이미지 영역
+            # 이미지 영역 (frame + 자식 label)
+            self._asm_img_drop.drop_target_register(DND_FILES)
+            self._asm_img_drop.dnd_bind("<<Drop>>", self._asm_on_drop_image)
             self._asm_img_label.drop_target_register(DND_FILES)
             self._asm_img_label.dnd_bind("<<Drop>>", self._asm_on_drop_image)
-
-            # 안내 텍스트 업데이트
-            for w in self._asm_mp3_frame.winfo_children():
-                if isinstance(w, ctk.CTkLabel):
-                    w.configure(text="📂 mp3 파일을 여기로 드래그하거나 '+ 추가' 클릭")
-            self._asm_img_label.configure(text="🖼 이미지를 여기로 드래그하거나 '선택' 클릭")
-        except Exception as e:
+        except Exception:
             pass  # tkinterdnd2 없으면 클릭으로만
 
     def _parse_dnd_files(self, data: str) -> list[str]:
@@ -483,11 +486,14 @@ class App(ctk.CTk):
         if not self._asm_mp3_paths:
             ctk.CTkLabel(self._asm_mp3_frame,
                          text="📂 mp3 파일을 여기로 드래그하거나 '+ 추가' 클릭",
-                         text_color="gray50", font=("", 11)).pack(pady=15)
+                         text_color="gray50", font=("", 12)).pack(expand=True)
         else:
+            # 스크롤 가능한 영역
+            scroll = ctk.CTkScrollableFrame(self._asm_mp3_frame, fg_color="transparent")
+            scroll.pack(fill="both", expand=True, padx=5, pady=5)
             for i, p in enumerate(self._asm_mp3_paths):
-                row = ctk.CTkFrame(self._asm_mp3_frame, fg_color="transparent")
-                row.pack(fill="x", padx=10, pady=2)
+                row = ctk.CTkFrame(scroll, fg_color="transparent")
+                row.pack(fill="x", padx=5, pady=2)
                 ctk.CTkLabel(row, text=f"{i+1:2d}.", width=30,
                              text_color="gray50").pack(side="left")
                 ctk.CTkLabel(row, text=p.name, anchor="w",
@@ -497,7 +503,7 @@ class App(ctk.CTk):
                               text_color="gray50",
                               command=lambda idx=i: self._asm_remove_mp3(idx)).pack(side="right")
 
-        # DnD 재등록 (자식 위젯 변경 후에도 frame은 그대로지만 안전하게)
+        # DnD 재등록 (자식 위젯 변경 후 안전하게)
         try:
             from tkinterdnd2 import DND_FILES
             self._asm_mp3_frame.drop_target_register(DND_FILES)
