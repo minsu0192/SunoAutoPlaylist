@@ -194,7 +194,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.10.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.10.1", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -410,6 +410,58 @@ class App(ctk.CTk):
                       hover_color="#7C3AED", font=("", 15, "bold"),
                       command=self._asm_run).pack(fill="x", padx=25, pady=(15, 30))
 
+        # 드래그앤드롭 활성화
+        self._asm_setup_dnd()
+
+    def _asm_setup_dnd(self):
+        """빠른 조립 페이지 DnD 설정"""
+        try:
+            from tkinterdnd2 import DND_FILES
+
+            # mp3 영역
+            self._asm_mp3_frame.drop_target_register(DND_FILES)
+            self._asm_mp3_frame.dnd_bind("<<Drop>>", self._asm_on_drop_mp3)
+
+            # 이미지 영역
+            self._asm_img_label.drop_target_register(DND_FILES)
+            self._asm_img_label.dnd_bind("<<Drop>>", self._asm_on_drop_image)
+
+            # 안내 텍스트 업데이트
+            for w in self._asm_mp3_frame.winfo_children():
+                if isinstance(w, ctk.CTkLabel):
+                    w.configure(text="📂 mp3 파일을 여기로 드래그하거나 '+ 추가' 클릭")
+            self._asm_img_label.configure(text="🖼 이미지를 여기로 드래그하거나 '선택' 클릭")
+        except Exception as e:
+            pass  # tkinterdnd2 없으면 클릭으로만
+
+    def _parse_dnd_files(self, data: str) -> list[str]:
+        """DnD에서 받은 파일 경로 문자열 파싱 (공백/중괄호 처리)"""
+        try:
+            return list(self.tk.splitlist(data))
+        except Exception:
+            return data.strip().split()
+
+    def _asm_on_drop_mp3(self, event):
+        files = self._parse_dnd_files(event.data)
+        added = 0
+        for f in files:
+            f = f.strip("{}")
+            if Path(f).suffix.lower() == ".mp3":
+                self._asm_mp3_paths.append(Path(f))
+                added += 1
+        if added:
+            self._asm_refresh_mp3_list()
+
+    def _asm_on_drop_image(self, event):
+        files = self._parse_dnd_files(event.data)
+        for f in files:
+            f = f.strip("{}")
+            if Path(f).suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"):
+                self._asm_img_path = Path(f)
+                self._asm_img_label.configure(text=f"📷 {self._asm_img_path.name}",
+                                              text_color="white")
+                break
+
     def _asm_pick_mp3s(self):
         paths = filedialog.askopenfilenames(
             title="음원 파일 선택 (순서대로 선택)",
@@ -429,23 +481,29 @@ class App(ctk.CTk):
             w.destroy()
 
         if not self._asm_mp3_paths:
-            self._asm_mp3_label = ctk.CTkLabel(self._asm_mp3_frame,
-                                                text="선택된 파일 없음",
-                                                text_color="gray50", font=("", 11))
-            self._asm_mp3_label.pack(pady=15)
-            return
+            ctk.CTkLabel(self._asm_mp3_frame,
+                         text="📂 mp3 파일을 여기로 드래그하거나 '+ 추가' 클릭",
+                         text_color="gray50", font=("", 11)).pack(pady=15)
+        else:
+            for i, p in enumerate(self._asm_mp3_paths):
+                row = ctk.CTkFrame(self._asm_mp3_frame, fg_color="transparent")
+                row.pack(fill="x", padx=10, pady=2)
+                ctk.CTkLabel(row, text=f"{i+1:2d}.", width=30,
+                             text_color="gray50").pack(side="left")
+                ctk.CTkLabel(row, text=p.name, anchor="w",
+                             text_color="white").pack(side="left", fill="x", expand=True)
+                ctk.CTkButton(row, text="✕", width=24, height=24,
+                              fg_color="transparent", hover_color="#e74c3c",
+                              text_color="gray50",
+                              command=lambda idx=i: self._asm_remove_mp3(idx)).pack(side="right")
 
-        for i, p in enumerate(self._asm_mp3_paths):
-            row = ctk.CTkFrame(self._asm_mp3_frame, fg_color="transparent")
-            row.pack(fill="x", padx=10, pady=2)
-            ctk.CTkLabel(row, text=f"{i+1:2d}.", width=30,
-                         text_color="gray50").pack(side="left")
-            ctk.CTkLabel(row, text=p.name, anchor="w",
-                         text_color="white").pack(side="left", fill="x", expand=True)
-            ctk.CTkButton(row, text="✕", width=24, height=24,
-                          fg_color="transparent", hover_color="#e74c3c",
-                          text_color="gray50",
-                          command=lambda idx=i: self._asm_remove_mp3(idx)).pack(side="right")
+        # DnD 재등록 (자식 위젯 변경 후에도 frame은 그대로지만 안전하게)
+        try:
+            from tkinterdnd2 import DND_FILES
+            self._asm_mp3_frame.drop_target_register(DND_FILES)
+            self._asm_mp3_frame.dnd_bind("<<Drop>>", self._asm_on_drop_mp3)
+        except Exception:
+            pass
 
     def _asm_remove_mp3(self, idx):
         if 0 <= idx < len(self._asm_mp3_paths):
