@@ -265,8 +265,8 @@ class Pipeline:
         output_base = Path(cfg.output_dir) / self._safe_dirname(keyword)
         output_base.mkdir(parents=True, exist_ok=True)
 
-        # 썸네일 생성 (사용자 지정 텍스트 + 사이즈 프리셋)
-        thumbnail_text = cfg.thumbnail_text or "Seoul Diary Playlist"
+        # 썸네일 생성 (작업별 오버라이드 → 설정 → 기본값 순)
+        thumbnail_text = item.get("thumbnail_text") or cfg.thumbnail_text or "Seoul Diary Playlist"
         thumbnail_size = cfg.thumbnail_size if cfg.thumbnail_size in ("M", "XL") else "M"
         _log(f"=== 썸네일 생성: '{thumbnail_text}' (크기 {thumbnail_size}) ===")
         _progress("썸네일 생성 중...", 4, total_steps)

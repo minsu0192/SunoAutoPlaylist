@@ -58,12 +58,15 @@ class QueueManager:
     # 공개 API                                                             #
     # ------------------------------------------------------------------ #
 
-    def add(self, keyword: str, image_path: str = "") -> str:
-        """큐에 새 항목을 추가하고 항목 ID를 반환한다. image_path는 선택."""
+    def add(self, keyword: str, image_path: str | None = "",
+            thumbnail_text: str | None = None) -> str:
+        """큐에 새 항목을 추가하고 항목 ID를 반환한다.
+        image_path / thumbnail_text는 선택."""
         item_id = str(uuid.uuid4())
         item = {
             "id": item_id,
             "image_path": str(image_path) if image_path else "",
+            "thumbnail_text": thumbnail_text or "",
             "keyword": keyword,
             "status": STATUS_PENDING,
             "created_at": datetime.now(timezone.utc).isoformat(),

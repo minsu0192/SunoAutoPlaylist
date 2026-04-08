@@ -84,8 +84,17 @@ class QueueCard(ctk.CTkFrame):
         self.status_label.pack(side="left")
         self.status_label.bind("<Button-1>", self._click)
 
-        # 키워드
-        self.kw_label = ctk.CTkLabel(self, text=item["keyword"], font=("", 14, "bold"), anchor="w")
+        # 키워드 + 인디케이터
+        kw_text = item["keyword"]
+        indicators = []
+        if item.get("image_path"):
+            indicators.append("📷")
+        if item.get("thumbnail_text"):
+            indicators.append("📝")
+        if indicators:
+            kw_text += "  " + "".join(indicators)
+
+        self.kw_label = ctk.CTkLabel(self, text=kw_text, font=("", 14, "bold"), anchor="w")
         self.kw_label.pack(side="left", fill="x", expand=True, padx=10)
         self.kw_label.bind("<Button-1>", self._click)
 
@@ -194,7 +203,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.10.2", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.11.0", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -229,27 +238,59 @@ class App(ctk.CTk):
         input_card = ctk.CTkFrame(page, fg_color=CARD_BG, corner_radius=15)
         input_card.pack(fill="x", padx=20, pady=(20, 10))
 
-        ctk.CTkLabel(input_card, text="새 작업 추가", font=("", 14, "bold"), text_color="gray70").pack(anchor="w", padx=20, pady=(15, 5))
+        ctk.CTkLabel(input_card, text="새 작업 추가", font=("", 14, "bold"),
+                     text_color="gray70").pack(anchor="w", padx=20, pady=(15, 5))
 
+        # ── 키워드 입력 ──
         kw_row = ctk.CTkFrame(input_card, fg_color="transparent")
-        kw_row.pack(fill="x", padx=20, pady=(0, 10))
+        kw_row.pack(fill="x", padx=20, pady=(0, 8))
 
-        self._kw_entry = ctk.CTkEntry(kw_row, height=45, placeholder_text="키워드를 입력하세요 (예: 새벽 감성 lofi)", border_width=0, fg_color="gray14")
+        self._kw_entry = ctk.CTkEntry(kw_row, height=45,
+                                       placeholder_text="키워드 입력 (예: 새벽 감성 lofi, 가을 카페)",
+                                       border_width=0, fg_color="gray14")
         self._kw_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self._kw_entry.bind("<Return>", lambda _: self._add_keyword())
 
-        ctk.CTkButton(kw_row, text="추가하기", width=100, height=45, fg_color=ACCENT, hover_color="#7C3AED", font=("", 13, "bold"),
+        ctk.CTkButton(kw_row, text="➕ 작업 추가", width=120, height=45,
+                       fg_color=ACCENT, hover_color="#7C3AED", font=("", 13, "bold"),
                        command=self._add_keyword).pack(side="right")
 
-        # 드롭 영역 (이미지)
-        self._drop_frame = ctk.CTkFrame(input_card, fg_color="gray14", height=60, corner_radius=10, border_width=1, border_color="gray25")
-        self._drop_frame.pack(fill="x", padx=20, pady=(0, 20))
+        # ── 선택적 이미지 + 썸네일 텍스트 ──
+        opt_card = ctk.CTkFrame(input_card, fg_color="gray14", corner_radius=10)
+        opt_card.pack(fill="x", padx=20, pady=(5, 15))
+
+        ctk.CTkLabel(opt_card, text="🎨 옵션 (선택)",
+                     font=("", 11, "bold"), text_color="gray60").pack(anchor="w", padx=15, pady=(10, 5))
+
+        # 이미지 드롭 영역
+        self._drop_frame = ctk.CTkFrame(opt_card, fg_color="gray16", height=55,
+                                         corner_radius=8, border_width=1, border_color="gray25")
+        self._drop_frame.pack(fill="x", padx=15, pady=(0, 8))
         self._drop_frame.pack_propagate(False)
         self._drop_frame.bind("<Button-1>", lambda _: self._pick_files())
 
-        self._drop_label = ctk.CTkLabel(self._drop_frame, text="📸 배경 이미지 추가 (선택사항, 파일명=키워드)", font=("", 12), text_color="gray50")
+        self._drop_label = ctk.CTkLabel(
+            self._drop_frame,
+            text="📸 배경 이미지 (없으면 자동 검색) — 드래그 또는 클릭",
+            font=("", 11), text_color="gray50",
+        )
         self._drop_label.pack(expand=True)
         self._drop_label.bind("<Button-1>", lambda _: self._pick_files())
+
+        # 선택된 이미지 + 초기화 버튼
+        self._gen_image_path: Path | None = None
+
+        # 썸네일 텍스트 (옵션, 비우면 설정값 사용)
+        thumb_row = ctk.CTkFrame(opt_card, fg_color="transparent")
+        thumb_row.pack(fill="x", padx=15, pady=(0, 12))
+        ctk.CTkLabel(thumb_row, text="썸네일 문구:", width=80,
+                     anchor="w", text_color="gray60",
+                     font=("", 11)).pack(side="left")
+        self._gen_thumb_text = ctk.CTkEntry(thumb_row, height=32,
+                                              placeholder_text="비우면 설정값 사용 (예: Seoul Diary Playlist)",
+                                              border_width=0, fg_color="gray16")
+        self._gen_thumb_text.pack(side="left", fill="x", expand=True)
+
         self._setup_dnd()
 
         # 큐 목록 영역
@@ -810,27 +851,68 @@ class App(ctk.CTk):
 
     def _add_keyword(self):
         kw = self._kw_entry.get().strip()
-        if not kw: return
-        self._queue.add(keyword=kw)
+        if not kw:
+            return
+
+        # 옵션 이미지 + 썸네일 텍스트
+        image_path = str(self._gen_image_path) if self._gen_image_path else None
+        thumb_text = self._gen_thumb_text.get().strip() or None
+
+        self._queue.add(
+            keyword=kw,
+            image_path=image_path,
+            thumbnail_text=thumb_text,
+        )
+
+        # 입력 초기화
         self._kw_entry.delete(0, "end")
+        self._gen_thumb_text.delete(0, "end")
+        self._gen_image_path = None
+        self._drop_label.configure(
+            text="📸 배경 이미지 (없으면 자동 검색) — 드래그 또는 클릭",
+            text_color="gray50",
+        )
         self._refresh_queue()
 
     def _pick_files(self):
-        paths = filedialog.askopenfilenames(filetypes=[("이미지", "*.png *.jpg *.jpeg *.webp *.gif *.bmp")])
-        for p in paths:
-            self._queue.add(keyword=Path(p).stem, image_path=p)
-        if paths: self._refresh_queue()
+        path = filedialog.askopenfilename(
+            filetypes=[("이미지", "*.png *.jpg *.jpeg *.webp *.gif *.bmp")],
+        )
+        if path:
+            self._gen_image_path = Path(path)
+            self._drop_label.configure(
+                text=f"📷 {self._gen_image_path.name}  (× 클릭으로 제거)",
+                text_color="white",
+            )
+            # 라벨 클릭 시 이미지 제거
+            self._drop_label.bind("<Button-1>", lambda _: self._gen_clear_image())
+            self._drop_frame.bind("<Button-1>", lambda _: self._gen_clear_image())
+
+    def _gen_clear_image(self):
+        self._gen_image_path = None
+        self._drop_label.configure(
+            text="📸 배경 이미지 (없으면 자동 검색) — 드래그 또는 클릭",
+            text_color="gray50",
+        )
+        self._drop_label.bind("<Button-1>", lambda _: self._pick_files())
+        self._drop_frame.bind("<Button-1>", lambda _: self._pick_files())
 
     def _on_drop(self, event):
-        try: files = self.tk.splitlist(event.data)
-        except Exception: files = event.data.strip().split()
-        added = 0
+        try:
+            files = self.tk.splitlist(event.data)
+        except Exception:
+            files = event.data.strip().split()
         for f in files:
             f = f.strip("{}")
             if Path(f).suffix.lower() in (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"):
-                self._queue.add(keyword=Path(f).stem, image_path=f)
-                added += 1
-        if added: self._refresh_queue()
+                self._gen_image_path = Path(f)
+                self._drop_label.configure(
+                    text=f"📷 {self._gen_image_path.name}  (× 클릭으로 제거)",
+                    text_color="white",
+                )
+                self._drop_label.bind("<Button-1>", lambda _: self._gen_clear_image())
+                self._drop_frame.bind("<Button-1>", lambda _: self._gen_clear_image())
+                break  # 첫 번째 이미지만
 
     def _save_settings(self):
         try:
