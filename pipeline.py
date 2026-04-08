@@ -265,7 +265,7 @@ class Pipeline:
 
         # 썸네일 생성 (사용자 지정 텍스트 + 사이즈 프리셋)
         thumbnail_text = cfg.thumbnail_text or "Seoul Diary Playlist"
-        thumbnail_size = cfg.thumbnail_size or "M"
+        thumbnail_size = cfg.thumbnail_size if cfg.thumbnail_size in ("M", "XL") else "M"
         _log(f"=== 썸네일 생성: '{thumbnail_text}' (크기 {thumbnail_size}) ===")
         _progress("썸네일 생성 중...", 4, total_steps)
         thumb_path = output_base / "thumbnail.jpg"

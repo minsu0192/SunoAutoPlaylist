@@ -193,7 +193,7 @@ class App(ctk.CTk):
                                         command=self._on_learn)
         self.learn_btn.pack(fill="x", pady=5)
 
-        ver = ctk.CTkLabel(info_frame, text="v1.7.0", font=("", 10), text_color="gray50")
+        ver = ctk.CTkLabel(info_frame, text="v1.7.1", font=("", 10), text_color="gray50")
         ver.pack()
 
         # ── 메인 콘텐츠 영역 ──
@@ -335,7 +335,17 @@ class App(ctk.CTk):
         sec_thumb.pack(fill="x", padx=25)
 
         self._add_setting_row(sec_thumb, "썸네일 문구", "thumbnail_text", placeholder="Seoul Diary Playlist")
-        self._add_setting_segmented(sec_thumb, "글씨 크기", "thumbnail_size", ["S", "M", "L", "XL"])
+        self._add_setting_segmented(sec_thumb, "글씨 크기", "thumbnail_size", ["M", "XL"])
+
+        # 글씨 크기 예시 안내
+        hint = ctk.CTkLabel(
+            sec_thumb,
+            text="  M (작게) — 긴 문구 (예: Seoul Diary Playlist)\n  XL (크게) — 짧은 단어 (예: essential / playlist)",
+            font=("", 11),
+            text_color="gray60",
+            justify="left",
+        )
+        hint.pack(anchor="w", padx=25, pady=(0, 10))
 
         # ── YouTube ──
         sec_yt = add_section("📺 YouTube 설정")

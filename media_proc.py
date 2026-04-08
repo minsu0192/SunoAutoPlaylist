@@ -37,10 +37,10 @@ def _crop_resize(img: Image.Image, width: int, height: int) -> Image.Image:
 
 
 # 사이즈 프리셋 (Bodoni 72 Bold 기준)
+# M = "Seoul Diary Playlist" 같은 긴 텍스트용
+# XL = "essential" / "playlist" 같은 짧은 단어용
 THUMBNAIL_SIZE_PRESETS = {
-    "S":  {"font_size": 110, "line_height": 75,  "shadow": 2},
     "M":  {"font_size": 170, "line_height": 105, "shadow": 3},
-    "L":  {"font_size": 220, "line_height": 135, "shadow": 4},
     "XL": {"font_size": 280, "line_height": 170, "shadow": 5},
 }
 
@@ -84,10 +84,10 @@ def make_thumbnail(
         except Exception:
             font_big = ImageFont.truetype(_FONT_KOREAN, font_size)
 
-    # 텍스트 (줄바꿈 지원)
+    # 텍스트 (줄바꿈 지원) — 중앙보다 위쪽에 배치
     lines = channel_name.split("\n")
     total_text_h = line_height * len(lines)
-    y_start = (height - total_text_h) // 2 - 15
+    y_start = (height - total_text_h) // 2 - 110
 
     for i, line in enumerate(lines):
         bbox = draw.textbbox((0, 0), line, font=font_big)
