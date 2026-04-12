@@ -37,6 +37,7 @@ pyinstaller \
   --hidden-import "Quartz" \
   --hidden-import "googleapiclient" \
   --hidden-import "google_auth_oauthlib" \
+  --icon "icon.icns" \
   --osx-bundle-identifier "com.suno.auto" \
   app.py
 
