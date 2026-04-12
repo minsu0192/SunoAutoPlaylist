@@ -261,7 +261,7 @@ def cmd_fetch_images(args):
     print(f"🔍 Unsplash 검색: {info.keyword} ({args.count}장)")
     images = []
     for i in range(args.count):
-        img_path = fetch_unsplash_image(info.keyword, cfg.unsplash_access_key, images_dir)
+        img_path = fetch_unsplash_image(info.keyword, cfg.unsplash_access_key, images_dir, anthropic_api_key=cfg.anthropic_api_key)
         if not img_path:
             print(f"   {i+1}. 실패")
             continue

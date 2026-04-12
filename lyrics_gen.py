@@ -365,37 +365,76 @@ FALLBACK_SUBJECTS = [
 ]
 
 
-def _keyword_to_english(keyword: str, simple: bool = False) -> str:
+def _keyword_to_english_claude(keyword: str, api_key: str, simple: bool = False) -> str:
     """
-    한글 키워드를 Pixabay 검색용 영어로 변환.
-    매번 다른 동의어를 랜덤 선택하여 검색 결과 다양성을 극대화한다.
+    Claude AI를 사용해 키워드를 Unsplash/Pixabay 검색용 영어로 변환.
+    어떤 한글 키워드든 정확한 영어 검색어로 변환 가능.
 
     Args:
-        simple: True면 모디파이어 없이 주제어 1개만 (검색 결과 0개일 때 폴백용)
+        keyword: 한글 또는 영어 키워드
+        api_key: Anthropic API 키
+        simple: True면 짧은 검색어 (폴백 재시도용)
+    """
+    if not api_key:
+        return _keyword_to_english_fallback(keyword, simple)
+
+    length_hint = "2-3 words" if simple else "3-5 words"
+    prompt = f"""Convert this Korean/English keyword into an Unsplash image search query.
+
+Keyword: {keyword}
+
+Rules:
+- Output ONLY the English search query, nothing else
+- {length_hint}, optimized for finding beautiful landscape/cityscape photos
+- Focus on the SCENE and MOOD (not abstract concepts)
+- Think about what photograph would best represent this keyword as a YouTube playlist thumbnail
+- Make it specific enough to get relevant results, but not so specific that results are sparse
+- Do NOT include words like "aesthetic", "cinematic", "moody" — just describe the scene
+- Every response should be slightly different even for the same keyword
+
+Examples:
+- "자전거 타며 흐르는 저녁" → "evening cycling city street sunset"
+- "한강 야경" → "Han River Seoul night view"
+- "비 오는 카페" → "rainy day cafe window"
+- "크리스마스 재즈" → "christmas lights cozy warm street"
+- "옥상 위의 노을" → "rooftop sunset city skyline"
+
+Output ONLY the search query:"""
+
+    try:
+        result = _call_claude(api_key, prompt, temperature=1.0).strip()
+        # 한 줄만, 최대 60자
+        result = result.split("\n")[0].strip().strip('"').strip("'")[:60]
+        if result:
+            return result
+    except Exception:
+        pass
+
+    return _keyword_to_english_fallback(keyword, simple)
+
+
+def _keyword_to_english_fallback(keyword: str, simple: bool = False) -> str:
+    """
+    Claude API 실패 시 기존 딕셔너리 기반 폴백.
     """
     has_korean = any('\uAC00' <= c <= '\uD7A3' for c in keyword)
 
-    # 매칭되는 키워드의 동의어 중 랜덤 선택 (주제어 1개만)
     subjects: list[str] = []
     for k, synonyms in KEYWORD_SYNONYMS.items():
         if k in keyword:
             subjects.append(random.choice(synonyms))
 
     if subjects:
-        # 매칭된 주제 중 1개만 선택 (너무 specific한 쿼리 방지)
         subject = random.choice(subjects)
     elif not has_korean:
-        # 영어 키워드는 그대로 (가장 첫 1~2 단어만)
         words = keyword.split()[:2]
         subject = " ".join(words)
     else:
-        # 매칭 안 되는 한글 → 폴백
         subject = random.choice(FALLBACK_SUBJECTS)
 
     if simple:
         return subject
 
-    # 감성 모디파이어 1개만 추가 (너무 많이 붙이면 검색 결과 0개)
     modifier = random.choice(AESTHETIC_MODIFIERS)
     return f"{subject} {modifier}"
 
@@ -425,17 +464,16 @@ def _save_image_history(history: set[int]) -> None:
         pass
 
 
-def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | None:
+def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path, anthropic_api_key: str = "") -> Path | None:
     """
     Pixabay에서 감성적이고 중복 없는 이미지를 다운로드한다.
 
     전략:
-    1. 한글 키워드 → 동의어 풀에서 랜덤 선택 (매번 다른 검색어)
-    2. 감성 모디파이어 1~2개 랜덤 추가
-    3. per_page=50, order=popular로 50개 후보 확보
-    4. 랜덤 페이지(1~5)에서 가져옴
-    5. 이미지 ID 이력에서 사용한 것은 제외
-    6. 남은 후보 중 랜덤 선택, 새 ID는 이력에 추가
+    1. Claude AI로 키워드 → 영어 검색어 변환 (폴백: 딕셔너리)
+    2. per_page=50, order=popular로 50개 후보 확보
+    3. 랜덤 페이지(1~5)에서 가져옴
+    4. 이미지 ID 이력에서 사용한 것은 제외
+    5. 남은 후보 중 랜덤 선택, 새 ID는 이력에 추가
     """
     import urllib.request
     import urllib.parse
@@ -464,9 +502,12 @@ def fetch_pixabay_image(keyword: str, api_key: str, save_dir: Path) -> Path | No
     # 최대 5번 시도 (다른 검색어/페이지로 재시도)
     chosen = None
     for attempt in range(5):
-        # 첫 3번: 풀 쿼리(주제+모디파이어). 마지막 2번: 단순 쿼리(주제만)
+        # 첫 3번: Claude AI 변환. 마지막 2번: 단순 쿼리(폴백)
         simple = attempt >= 3
-        search_term = _keyword_to_english(keyword, simple=simple)
+        if anthropic_api_key and attempt < 3:
+            search_term = _keyword_to_english_claude(keyword, anthropic_api_key, simple=simple)
+        else:
+            search_term = _keyword_to_english_fallback(keyword, simple=simple)
         page = random.randint(1, 5)
         hits = _search(search_term, page)
 
@@ -540,16 +581,15 @@ def _save_unsplash_history(history: set[str]) -> None:
         pass
 
 
-def fetch_unsplash_image(keyword: str, access_key: str, save_dir: Path) -> Path | None:
+def fetch_unsplash_image(keyword: str, access_key: str, save_dir: Path, anthropic_api_key: str = "") -> Path | None:
     """
     Unsplash에서 시네마틱 감성 이미지를 다운로드.
 
     전략:
-    1. 한글 키워드 → 영어 동의어 풀에서 랜덤 선택
-    2. 감성 모디파이어 추가
-    3. per_page=30, orientation=landscape
-    4. 랜덤 페이지(1~3)
-    5. 이미지 ID 이력 제외
+    1. Claude AI로 키워드 → 영어 검색어 변환 (폴백: 딕셔너리)
+    2. per_page=30, orientation=landscape
+    3. 랜덤 페이지(1~3)
+    4. 이미지 ID 이력 제외
     """
     import urllib.request
     import urllib.parse
@@ -580,7 +620,10 @@ def fetch_unsplash_image(keyword: str, access_key: str, save_dir: Path) -> Path 
     chosen = None
     for attempt in range(5):
         simple = attempt >= 3
-        search_term = _keyword_to_english(keyword, simple=simple)
+        if anthropic_api_key and attempt < 3:
+            search_term = _keyword_to_english_claude(keyword, anthropic_api_key, simple=simple)
+        else:
+            search_term = _keyword_to_english_fallback(keyword, simple=simple)
         page = random.randint(1, 3)
         hits = _search(search_term, page)
 

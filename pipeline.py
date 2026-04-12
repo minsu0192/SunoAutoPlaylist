@@ -48,7 +48,7 @@ class Pipeline:
             # 1순위: Unsplash (시네마틱 고퀄)
             if cfg.unsplash_access_key:
                 _log("[Unsplash] 배경 이미지 검색 중...")
-                dl = fetch_unsplash_image(keyword, cfg.unsplash_access_key, img_dir)
+                dl = fetch_unsplash_image(keyword, cfg.unsplash_access_key, img_dir, anthropic_api_key=cfg.anthropic_api_key)
                 if dl:
                     image_path = dl
                     _log(f"[Unsplash] 이미지 다운로드 완료: {dl.name}")
@@ -58,7 +58,7 @@ class Pipeline:
             # 2순위: Pixabay fallback
             if not image_path and cfg.pixabay_api_key:
                 _log("[Pixabay] fallback 이미지 검색 중...")
-                dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key, img_dir)
+                dl = fetch_pixabay_image(keyword, cfg.pixabay_api_key, img_dir, anthropic_api_key=cfg.anthropic_api_key)
                 if dl:
                     image_path = dl
                     _log(f"[Pixabay] 이미지 다운로드 완료: {dl.name}")
